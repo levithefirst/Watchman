@@ -1,0 +1,12 @@
+{
+  "name": "@watchman/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@somnia-chain/markets-sdk": ">=0.28.0",
+    "viem": "^2.37.0"
+  },
+  "devDependencies": { "typescript": "^5.9.2" }
+}
