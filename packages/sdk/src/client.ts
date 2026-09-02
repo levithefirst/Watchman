@@ -52,6 +52,13 @@ export async function cheapestDownQuote(ctx: WatchmanContext, asset: "BTC" | "ET
   return quotes[0] ?? null;
 }
 
+export async function getTUSDCBalance(ctx: WatchmanContext, address?: `0x${string}`): Promise<number> {
+  const account = address ?? ctx.walletAddress;
+  if (!account) return 0;
+  const raw = await ctx.exchange.client.getErc20Balance(TUSDC, account);
+  return Number(raw) / 10 ** COLLATERAL_DECIMALS;
+}
+
 export async function placeDownIOC(ctx: WatchmanContext, trading: TradingMarket, price: number, contracts: number): Promise<PlacedHedge> {
   if (!ctx.exchange.walletAddress) throw new Error("No signer wallet configured");
   const fresh = await ctx.exchange.client.getMarketOnchain(trading.market.info.marketId as Hex);
