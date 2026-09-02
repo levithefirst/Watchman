@@ -1,5 +1,5 @@
 import { db } from "@watchman/db";
-import { calculateEffectiveness, createWatchmanContext, redeem, COLLATERAL_DECIMALS } from "@watchman/sdk";
+import { calculateEffectiveness, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC, quoteHedge, redeem, COLLATERAL_DECIMALS } from "@watchman/sdk";
 
 const intervalMs = Number(process.env.SETTLEMENT_POLL_MS ?? 10_000);
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -15,15 +15,11 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany>>[nu
     const onchain = await ctx.exchange.client.getMarketOnchain(hedge.marketId as `0x${string}`);
     const state: MarketState = { expiry: onchain.expiry, decimals: onchain.decimals, outcomeToken: onchain.outcomeToken, yesId: onchain.yesId, noId: onchain.noId, winningOutcome: onchain.winningOutcome, isResolved: onchain.isResolved, isVoided: onchain.isVoided };
     if (!state.isResolved && !state.isVoided) return;
-
-    // Resolution is read from the chain-bound oracle adapter, not the indexer.
-    // This remains correct while the indexer is behind or the pool has rotated.
     const resolution = await ctx.exchange.client.getOnchainResolutionPrice(hedge.marketId);
     const entryPrice = Number(hedge.exposure?.entryPrice ?? 0);
     const actualMovePct = resolutionMovePct(resolution, entryPrice);
     const settlementFees = await ctx.exchange.client.getMarketFees(hedge.marketId);
     const feeBps = BigInt(settlementFees?.settlementFeeBps ?? 0);
-
     let payoutUsd = 0;
     if (process.env.PRIVATE_KEY && ctx.walletAddress) {
       const heldYes = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: state.outcomeToken, account: ctx.walletAddress, id: state.yesId });
@@ -33,10 +29,7 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany>>[nu
       else if (state.winningOutcome === 1 && heldNo > 0n) claimable.push({ outcome: 1, amount: heldNo });
       else if (state.winningOutcome === 0 && heldYes > 0n) claimable.push({ outcome: 0, amount: heldYes });
       for (const position of claimable) { payoutUsd += payoutFor(position.amount, state.decimals || COLLATERAL_DECIMALS, state, feeBps); await redeem(ctx, hedge.marketId as `0x${string}`, position.outcome, position.amount); }
-    } else {
-      payoutUsd = state.isVoided ? Number(hedge.contractsFilled) / 2 : state.winningOutcome === 1 ? Number(hedge.contractsFilled) * Math.max(0, 1 - Number(feeBps) / 10_000) : 0;
-    }
-
+    } else payoutUsd = state.isVoided ? Number(hedge.contractsFilled) / 2 : state.winningOutcome === 1 ? Number(hedge.contractsFilled) * Math.max(0, 1 - Number(feeBps) / 10_000) : 0;
     const effectiveness = calculateEffectiveness({ exposureUsd: Number(hedge.exposureUsd), premiumUsd: Number(hedge.premiumUsd), actualMovePct, payoutUsd });
     await db.$transaction([
       db.receipt.upsert({ where: { hedgeId: hedge.id }, update: {}, create: { hedgeId: hedge.id, exposureUsd: effectiveness.exposureUsd, premiumUsd: effectiveness.premiumUsd, actualMovePct: effectiveness.actualMovePct, unhedgedPnlUsd: effectiveness.unhedgedPnlUsd, hedgedPnlUsd: effectiveness.hedgedPnlUsd, payoutUsd: effectiveness.hedgePayoutUsd, netProtectionUsd: effectiveness.netProtectionUsd, efficiencyPct: effectiveness.efficiencyPct } }),
@@ -46,7 +39,7 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany>>[nu
   } finally { await ctx.exchange.close().catch(() => undefined); }
 }
 
-async function tick(): Promise<void> {
+async function settleOpenHedges(): Promise<void> {
   const candidates = await db.hedge.findMany({ where: { status: { in: ["OPEN", "SETTLING"] } }, include: { exposure: true }, orderBy: { expiry: "asc" }, take: 50 });
   for (const hedge of candidates) {
     const lock = await db.hedge.updateMany({ where: { id: hedge.id, status: { in: ["OPEN", "SETTLING"] } }, data: { status: "SETTLING" } });
@@ -55,5 +48,40 @@ async function tick(): Promise<void> {
   }
 }
 
-async function main(): Promise<void> { console.log("Watchman settlement agent started on Somnia Shannon testnet (50312)"); while (true) { try { await tick(); } catch (error) { console.error(error); } await sleep(intervalMs); } }
+async function executePolicies(): Promise<void> {
+  const policies = await db.policy.findMany({ where: { status: "ACTIVE" }, include: { user: true }, take: 50 });
+  if (policies.length === 0) return;
+  const ctx = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
+  try {
+    for (const policy of policies) {
+      const exposure = await db.exposure.findFirst({ where: { userId: policy.userId, asset: policy.asset }, orderBy: { createdAt: "desc" } });
+      if (!exposure) continue;
+      const existing = await db.hedge.findFirst({ where: { userId: policy.userId, asset: policy.asset, status: { in: ["OPEN", "SETTLING"] } } });
+      if (existing) continue;
+      const quote = await cheapestDownQuote(ctx, policy.asset, policy.windowSeconds as 900 | 3600);
+      if (!quote) continue;
+      const sized = quoteHedge({ exposureUsd: Number(exposure.amount), protectionPct: Number(policy.protectionPct), maxPremiumUsd: Number(policy.maxPremiumUsd), windowSeconds: policy.windowSeconds as 900 | 3600 }, { downPrice: quote.downAsk, contractsAvailable: quote.contractsAvailable });
+      if (sized.contractsToBuy <= 0) continue;
+      const market = (await discoverTradingMarkets(ctx, policy.asset)).find((candidate) => candidate.market.info.marketId.toLowerCase() === quote.marketId.toLowerCase());
+      if (!market) continue;
+      const fresh = await ctx.exchange.client.getMarketOnchain(quote.marketId);
+      if (fresh.status !== 1) continue;
+      const isDemo = policy.user.demo;
+      let filled = sized.contractsToBuy;
+      let price = quote.downAsk;
+      let txHash: string | undefined;
+      if (!isDemo && process.env.PRIVATE_KEY) {
+        if (!ctx.walletAddress || policy.user.wallet.toLowerCase() !== ctx.walletAddress.toLowerCase()) continue;
+        const placed = await placeDownIOC(ctx, market, quote.downAsk, sized.contractsToBuy);
+        filled = placed.filled; price = placed.price; txHash = placed.hash;
+        if (filled <= 0) continue;
+      }
+      await db.hedge.create({ data: { userId: policy.userId, exposureId: exposure.id, asset: policy.asset, marketId: quote.marketId, marketSymbol: quote.symbol, windowSeconds: policy.windowSeconds, protectionPct: policy.protectionPct, exposureUsd: exposure.amount, protectedUsd: sized.protectedAmountUsd, contractsRequested: sized.contractsNeeded, contractsFilled: filled, premiumUsd: filled * price, downPrice: price, txHash, expiry: new Date(quote.expiry * 1000), status: "OPEN" } });
+      console.log(JSON.stringify({ event: "policy_hedge_created", policyId: policy.id, asset: policy.asset, marketId: quote.marketId, simulated: isDemo || !process.env.PRIVATE_KEY }));
+    }
+  } finally { await ctx.exchange.close().catch(() => undefined); }
+}
+
+async function tick(): Promise<void> { await settleOpenHedges(); await executePolicies(); }
+async function main(): Promise<void> { console.log("Watchman settlement/policy agent started on Somnia Shannon testnet (50312)"); while (true) { try { await tick(); } catch (error) { console.error(error); } await sleep(intervalMs); } }
 void main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });
