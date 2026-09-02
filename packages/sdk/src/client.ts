@@ -1,6 +1,6 @@
 import { SomniaMarkets, ORDER_TYPE, type MarketOnchain, type UnifiedMarket, type BinarySide } from "@somnia-chain/markets-sdk";
 import { defineChain, type Hex } from "viem";
-import { COLLATERAL_DECIMALS, MARKET_STATUS, TUSDC, WATCHMAN_CHAIN_ID, WATCHMAN_INDEXER_URL, WATCHMAN_RPC_URL, envConfig } from "./config.js";
+import { COLLATERAL_DECIMALS, MARKET_STATUS, TUSDC, WATCHMAN_ADDRESSES, WATCHMAN_CHAIN_ID, WATCHMAN_INDEXER_URL, WATCHMAN_RPC_URL, envConfig } from "./config.js";
 
 const chain = defineChain({ id: WATCHMAN_CHAIN_ID, name: "Somnia Shannon", nativeCurrency: { name: "Somnia Test Token", symbol: "STT", decimals: 18 }, rpcUrls: { default: { http: [WATCHMAN_RPC_URL] } } });
 
@@ -11,8 +11,8 @@ export interface PlacedHedge { hash?: string; filled: number; price: number; mar
 
 export function createWatchmanContext(withSigner = false): WatchmanContext {
   const cfg = envConfig();
-  if (withSigner && !cfg.privateKey) throw new Error("PRIVATE_KEY is required for testnet writes");
-  const exchange = new SomniaMarkets({ indexerUrl: WATCHMAN_INDEXER_URL, chain, privateKey: withSigner ? cfg.privateKey : undefined });
+  if (withSigner && !cfg.privateKey) throw new Error("PRIVATE_KEY is required for Somnia Shannon writes");
+  const exchange = new SomniaMarkets({ indexerUrl: WATCHMAN_INDEXER_URL, chain, addresses: WATCHMAN_ADDRESSES, privateKey: withSigner ? cfg.privateKey : undefined });
   return { exchange, walletAddress: exchange.walletAddress as `0x${string}` | undefined };
 }
 
