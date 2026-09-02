@@ -8,7 +8,7 @@ datasource db {
 }
 
 enum Asset { BTC ETH }
-enum HedgeStatus { QUOTED ACTIVE SETTLING SETTLED REDEEMED FAILED }
+enum HedgeStatus { QUOTED OPEN ACTIVE SETTLING SETTLED REDEEMED FAILED }
 enum PolicyStatus { ACTIVE PAUSED }
 
 model User {
@@ -51,7 +51,7 @@ model Hedge {
   downPrice          Decimal     @db.Decimal(20, 10)
   txHash             String?
   expiry             DateTime
-  status             HedgeStatus @default(ACTIVE)
+  status             HedgeStatus @default(OPEN)
   createdAt          DateTime    @default(now())
   settledAt          DateTime?
   redeemedAt         DateTime?
@@ -87,6 +87,6 @@ model Policy {
   status        PolicyStatus @default(ACTIVE)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, status])
 }
