@@ -1,3 +1,5 @@
+import ProtectClient from "./ProtectClient";
+
 export default function ProtectPage(): React.ReactElement {
-  return <main className="min-h-screen px-6 py-16"><div className="mx-auto max-w-3xl"><a href="/" className="text-sm text-zinc-500">← Watchman</a><h1 className="mt-10 text-4xl font-semibold">Protect my position</h1><p className="mt-3 text-zinc-500">Set the amount of downside you want Watchman to offset.</p><div className="mt-10 rounded-2xl border border-zinc-900 bg-zinc-950 p-6"><p className="text-sm text-zinc-500">Demo flow</p><p className="mt-2 text-2xl font-medium">$10,000 BTC exposure</p><div className="mt-8 grid gap-4 sm:grid-cols-3"><div><p className="text-xs text-zinc-500">Protection</p><p className="mt-1 text-lg">50%</p></div><div><p className="text-xs text-zinc-500">Window</p><p className="mt-1 text-lg">15 minutes</p></div><div><p className="text-xs text-zinc-500">Max premium</p><p className="mt-1 text-lg">$150</p></div></div><div className="mt-8 rounded-xl bg-zinc-900/60 p-5"><p className="text-sm text-zinc-500">Live quote</p><p className="mt-2 text-3xl font-semibold">Waiting for DreamDEX market data</p><p className="mt-2 text-sm text-zinc-500">Writes are gated against the authoritative on-chain Trading status immediately before execution.</p></div></div></div></main>;
+  return <ProtectClient />;
 }
