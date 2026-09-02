@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Asset { BTC ETH }
+enum HedgeStatus { QUOTED ACTIVE SETTLING SETTLED REDEEMED FAILED }
+enum PolicyStatus { ACTIVE PAUSED }
+
+model User {
+  id          String     @id @default(cuid())
+  wallet      String     @unique
+  demo        Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  exposures   Exposure[]
+  hedges      Hedge[]
+  policies    Policy[]
+}
+
+model Exposure {
+  id          String   @id @default(cuid())
+  userId      String
+  asset       Asset
+  amount      Decimal  @db.Decimal(30, 10)
+  entryPrice  Decimal  @db.Decimal(30, 10)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hedges      Hedge[]
+  @@index([userId, asset])
+}
+
+model Hedge {
+  id                 String      @id @default(cuid())
+  userId             String
+  exposureId         String?
+  asset              Asset
+  marketId           String
+  marketSymbol       String
+  windowSeconds      Int
+  protectionPct      Decimal     @db.Decimal(8, 5)
+  exposureUsd        Decimal     @db.Decimal(30, 10)
+  protectedUsd       Decimal     @db.Decimal(30, 10)
+  contractsRequested Decimal     @db.Decimal(30, 10)
+  contractsFilled    Decimal     @db.Decimal(30, 10)
+  premiumUsd         Decimal     @db.Decimal(30, 10)
+  downPrice          Decimal     @db.Decimal(20, 10)
+  txHash             String?
+  expiry             DateTime
+  status             HedgeStatus @default(ACTIVE)
+  createdAt          DateTime    @default(now())
+  settledAt          DateTime?
+  redeemedAt         DateTime?
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exposure           Exposure?   @relation(fields: [exposureId], references: [id], onDelete: SetNull)
+  receipt            Receipt?
+  @@index([userId, status])
+  @@index([marketId])
+}
+
+model Receipt {
+  id               String   @id @default(cuid())
+  hedgeId          String   @unique
+  exposureUsd      Decimal  @db.Decimal(30, 10)
+  premiumUsd       Decimal  @db.Decimal(30, 10)
+  actualMovePct    Decimal  @db.Decimal(20, 10)
+  unhedgedPnlUsd   Decimal  @db.Decimal(30, 10)
+  hedgedPnlUsd     Decimal  @db.Decimal(30, 10)
+  payoutUsd        Decimal  @db.Decimal(30, 10)
+  netProtectionUsd Decimal  @db.Decimal(30, 10)
+  efficiencyPct    Decimal  @db.Decimal(20, 10)
+  createdAt        DateTime @default(now())
+  hedge            Hedge    @relation(fields: [hedgeId], references: [id], onDelete: Cascade)
+}
+
+model Policy {
+  id            String       @id @default(cuid())
+  userId        String
+  asset         Asset
+  protectionPct Decimal      @db.Decimal(8, 5)
+  windowSeconds Int
+  maxPremiumUsd Decimal      @db.Decimal(30, 10)
+  status        PolicyStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+}
