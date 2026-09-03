@@ -1,5 +1,5 @@
 import { db } from "@watchman/db";
-import { calculateEffectiveness, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC, quoteHedge, redeem, COLLATERAL_DECIMALS } from "@watchman/sdk";
+import { asBinary, calculateEffectiveness, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC, quoteHedge, redeem, COLLATERAL_DECIMALS } from "@watchman/sdk";
 
 const intervalMs = Number(process.env.SETTLEMENT_POLL_MS ?? 10_000);
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -9,7 +9,7 @@ const toNumber = (value: unknown): number => { const parsed = Number(value); if 
 const resolutionMovePct = (resolution: ResolutionPrice, entryPrice: number): number => { if (resolution.voided || entryPrice <= 0) return 0; const closePrice = toNumber(resolution.numericValue) / 10 ** resolution.decimals; return closePrice > 0 ? ((closePrice - entryPrice) / entryPrice) * 100 : 0; };
 const payoutFor = (amount: bigint, decimals: number, onchain: MarketState, settlementFeeBps: bigint): number => { const units = Number(amount) / 10 ** decimals; if (onchain.isVoided) return units / 2; if (!onchain.isResolved) return 0; return units * Math.max(0, 1 - Number(settlementFeeBps) / 10_000); };
 
-async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany>>[number]): Promise<void> {
+async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany<{ include: { exposure: true } }>>>[number]): Promise<void> {
   const ctx = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
   try {
     const onchain = await ctx.exchange.client.getMarketOnchain(hedge.marketId as `0x${string}`);
@@ -17,7 +17,7 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany>>[nu
     if (!state.isResolved && !state.isVoided) return;
     const resolution = await ctx.exchange.client.getOnchainResolutionPrice(hedge.marketId);
     const entryPrice = Number(hedge.exposure?.entryPrice ?? 0);
-    const actualMovePct = resolutionMovePct(resolution, entryPrice);
+    const actualMovePct = resolution ? resolutionMovePct(resolution, entryPrice) : 0;
     const settlementFees = await ctx.exchange.client.getMarketFees(hedge.marketId);
     const feeBps = BigInt(settlementFees?.settlementFeeBps ?? 0);
     let payoutUsd = 0;
@@ -62,7 +62,7 @@ async function executePolicies(): Promise<void> {
       if (!quote) continue;
       const sized = quoteHedge({ exposureUsd: Number(exposure.amount), protectionPct: Number(policy.protectionPct), maxPremiumUsd: Number(policy.maxPremiumUsd), windowSeconds: policy.windowSeconds as 900 | 3600 }, { downPrice: quote.downAsk, contractsAvailable: quote.contractsAvailable });
       if (sized.contractsToBuy <= 0) continue;
-      const market = (await discoverTradingMarkets(ctx, policy.asset)).find((candidate) => candidate.market.info.marketId.toLowerCase() === quote.marketId.toLowerCase());
+      const market = (await discoverTradingMarkets(ctx, policy.asset)).find((candidate) => asBinary(candidate.market).marketId.toLowerCase() === quote.marketId.toLowerCase());
       if (!market) continue;
       const fresh = await ctx.exchange.client.getMarketOnchain(quote.marketId);
       if (fresh.status !== 1) continue;

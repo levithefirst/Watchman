@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@watchman/db";
-import { cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC } from "@watchman/sdk";
+import { asBinary, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC } from "@watchman/sdk";
 import { quoteHedge, type HedgeRequest } from "@watchman/sdk";
 
 interface ProtectBody {
@@ -43,15 +43,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!isDemo && (!raw.wallet || !executionWallet || normaliseWallet(raw.wallet) !== executionWallet)) return NextResponse.json({ error: "Wallet mode requires the connected wallet to match the configured execution signer." }, { status: 403 });
 
     const markets = await discoverTradingMarkets(quoteContext, raw.asset);
-    const selected = markets.find((market) => market.market.info.marketId.toLowerCase() === quote.marketId.toLowerCase());
+    const selected = markets.find((market) => asBinary(market.market).marketId.toLowerCase() === quote.marketId.toLowerCase());
     if (!selected) return NextResponse.json({ error: "The quoted market is no longer discoverable." }, { status: 409 });
     const fresh = await quoteContext.exchange.client.getMarketOnchain(quote.marketId);
     if (fresh.status !== 1) return NextResponse.json({ error: "Market stopped trading before execution. Refresh the quote." }, { status: 409 });
 
+    const willExecuteLive = !isDemo && Boolean(process.env.PRIVATE_KEY);
     let txHash: string | undefined;
     let filled = hedgeQuote.contractsToBuy;
     let executionPrice = quote.downAsk;
-    if (process.env.PRIVATE_KEY) {
+    if (willExecuteLive) {
       const placed = await placeDownIOC(executionContext, selected, quote.downAsk, hedgeQuote.contractsToBuy);
       txHash = placed.hash;
       filled = placed.filled;
@@ -64,7 +65,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const exposure = await db.exposure.create({ data: { userId: user.id, asset: raw.asset, amount: raw.exposureUsd, entryPrice: Number(currentPrice.price) } });
     const saved = await db.hedge.create({ data: { userId: user.id, exposureId: exposure.id, asset: raw.asset, marketId: quote.marketId, marketSymbol: quote.symbol, windowSeconds: raw.windowSeconds, protectionPct: raw.protectionPct, exposureUsd: raw.exposureUsd, protectedUsd: hedgeQuote.protectedAmountUsd, contractsRequested: hedgeQuote.contractsNeeded, contractsFilled: filled, premiumUsd: filled * executionPrice, downPrice: executionPrice, txHash, expiry: new Date(quote.expiry * 1000), status: "OPEN" } });
 
-    return NextResponse.json({ hedgeId: saved.id, txHash: txHash ?? null, simulated: !process.env.PRIVATE_KEY, quote: { ...quote, hedge: hedgeQuote, filled, executionPrice, entryPrice: Number(currentPrice.price) } });
+    return NextResponse.json({ hedgeId: saved.id, txHash: txHash ?? null, simulated: !willExecuteLive, quote: { ...quote, hedge: hedgeQuote, filled, executionPrice, entryPrice: Number(currentPrice.price) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to protect position";
     return NextResponse.json({ error: message }, { status: 500 });

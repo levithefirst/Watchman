@@ -2,6 +2,6 @@
   "name": "watchman",
   "private": true,
   "packageManager": "pnpm@10.15.0",
-  "scripts": { "dev:web": "pnpm --filter @watchman/web dev", "dev:agent": "pnpm --filter @watchman/agent dev", "build": "pnpm --filter @watchman/db generate && pnpm -r build", "typecheck": "pnpm -r typecheck", "db:generate": "pnpm --filter @watchman/db generate", "db:migrate": "pnpm --filter @watchman/db migrate", "test": "pnpm --filter @watchman/sdk test" },
+  "scripts": { "dev:web": "pnpm --filter @watchman/web dev", "dev:agent": "pnpm --filter @watchman/agent dev", "build": "pnpm --filter @watchman/db generate && pnpm -r build", "typecheck": "pnpm -r typecheck", "db:generate": "pnpm --filter @watchman/db generate", "db:migrate": "pnpm --filter @watchman/db migrate", "db:migrate:deploy": "pnpm --filter @watchman/db migrate:deploy", "test": "pnpm --filter @watchman/sdk test" },
   "devDependencies": { "typescript": "^5.9.2" }
 }

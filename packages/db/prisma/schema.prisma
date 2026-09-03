@@ -7,9 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Asset { BTC ETH }
-enum HedgeStatus { QUOTED OPEN ACTIVE SETTLING SETTLED REDEEMED FAILED }
-enum PolicyStatus { ACTIVE PAUSED }
+enum Asset {
+  BTC
+  ETH
+}
+
+enum HedgeStatus {
+  QUOTED
+  OPEN
+  ACTIVE
+  SETTLING
+  SETTLED
+  REDEEMED
+  FAILED
+}
+
+enum PolicyStatus {
+  ACTIVE
+  PAUSED
+}
 
 model User {
   id          String     @id @default(cuid())

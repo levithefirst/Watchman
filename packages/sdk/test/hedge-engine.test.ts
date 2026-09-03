@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateEffectiveness, quoteHedge } from "./hedge-engine.js";
+import { calculateEffectiveness, quoteHedge } from "../src/hedge-engine.js";
 
 describe("Watchman hedge engine", () => {
   it("sizes full requested protection under a premium cap", () => {

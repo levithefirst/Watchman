@@ -11,10 +11,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     try {
       const quote = await cheapestDownQuote(ctx, raw.asset, raw.windowSeconds);
       const balance = raw.wallet ? await getTUSDCBalance(ctx, raw.wallet) : undefined;
-      if (!quote) return NextResponse.json({ quote: null, balance, error: "No live Trading market with usable Down liquidity was found." });
+      const liveExecutionAvailable = Boolean(process.env.PRIVATE_KEY);
+      if (!quote) return NextResponse.json({ quote: null, balance, liveExecutionAvailable, error: "No live Trading market with usable Down liquidity was found." });
       const requestData: HedgeRequest = { exposureUsd: raw.exposureUsd, protectionPct: raw.protectionPct, maxPremiumUsd: raw.maxPremiumUsd, windowSeconds: raw.windowSeconds };
       const hedge = quoteHedge(requestData, { downPrice: quote.downAsk, contractsAvailable: quote.contractsAvailable });
-      return NextResponse.json({ quote: { ...quote, hedge }, balance });
+      return NextResponse.json({ quote: { ...quote, hedge }, balance, liveExecutionAvailable });
     } finally { await ctx.exchange.close().catch(() => undefined); }
   } catch (error) { const message = error instanceof Error ? error.message : "Unable to quote protection"; return NextResponse.json({ error: message }, { status: 500 }); }
 }
