@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SiteHeader from "../components/SiteHeader";
+import SiteFooter from "../components/SiteFooter";
+import { Arrow, BasisNote, Button, Panel, Row, Tag } from "../components/ui";
+import { track } from "../components/analytics";
+import { money, count, pct } from "../components/format";
 
 const CHAIN_ID = 50312;
 type Asset = "BTC" | "ETH";
@@ -9,7 +14,6 @@ interface QuoteResponse { quote: { marketId: string; symbol: string; asset: stri
 interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; error?: string }
 interface EthereumProvider { request(args: { method: string; params?: readonly unknown[] }): Promise<unknown> }
 declare global { interface Window { ethereum?: EthereumProvider } }
-const money = (value: number): string => `$${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 export default function ProtectClient(): React.ReactElement {
   const [mode, setMode] = useState<"demo" | "wallet">("demo");
@@ -36,21 +40,25 @@ export default function ProtectClient(): React.ReactElement {
   useEffect(() => {
     const stored = window.localStorage.getItem("watchman.wallet");
     if (stored) { setWallet(stored); setMode("wallet"); }
+    else track("demo_started", { asset: "BTC", exposureUsd: 10000 });
   }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(async () => {
       setLoadingQuote(true); setQuoteError(undefined);
+      track("quote_requested", { asset, exposureUsd, protectionPct, windowSeconds, maxPremiumUsd });
       try {
         const response = await fetch("/api/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(requestBody) });
         const data = (await response.json()) as QuoteResponse;
         if (!response.ok) throw new Error(data.error ?? "Quote failed");
         setQuote(data.quote ?? undefined); setBalance(data.balance); setLiveExecutionAvailable(Boolean(data.liveExecutionAvailable));
+        if (data.quote) track("quote_received", { downAsk: data.quote.downAsk, contracts: data.quote.hedge.contractsToBuy, premiumUsd: data.quote.hedge.premiumUsd });
         if (data.error && !data.quote) setQuoteError(data.error);
       } catch (cause) { setQuote(undefined); setQuoteError(cause instanceof Error ? cause.message : "Quote unavailable"); }
       finally { setLoadingQuote(false); }
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [requestBody]);
+  }, [requestBody, asset, exposureUsd, protectionPct, windowSeconds, maxPremiumUsd]);
 
   const connectWallet = async (): Promise<void> => {
     setError(undefined);
@@ -61,11 +69,13 @@ export default function ProtectClient(): React.ReactElement {
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
       if (!Array.isArray(accounts) || typeof accounts[0] !== "string") throw new Error("Wallet connection returned no account.");
       setWallet(accounts[0]); window.localStorage.setItem("watchman.wallet", accounts[0]); setMode("wallet");
+      track("wallet_connected", { chainId: CHAIN_ID });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to connect wallet"); }
   };
 
   const fundWallet = async (): Promise<void> => {
     setFunding(true); setFundMessage(undefined); setError(undefined);
+    track("faucet_requested");
     try {
       const response = await fetch("/api/faucet", { method: "POST" });
       const data = (await response.json()) as { hash?: string | null; error?: string };
@@ -82,9 +92,296 @@ export default function ProtectClient(): React.ReactElement {
       const data = (await response.json()) as ProtectResponse;
       if (!response.ok) throw new Error(data.error ?? "Protection failed");
       setResult(data);
+      track("protection_created", { hedgeId: data.hedgeId, simulated: data.simulated ?? true, asset, exposureUsd });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Protection failed"); }
     finally { setProtecting(false); }
   };
 
-  return <main className="min-h-screen bg-black px-5 py-10 text-zinc-100 sm:px-8"><div className="mx-auto max-w-5xl"><div className="flex items-center justify-between"><a href="/" className="text-sm text-zinc-500 hover:text-zinc-200">← Watchman</a><a href="/hedges" className="text-sm text-zinc-400 hover:text-white">Active hedges</a></div><div className="mt-14 max-w-3xl"><p className="text-xs font-medium uppercase tracking-[0.25em] text-zinc-500">Portfolio insurance</p><h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-6xl">Protect the downside. Keep the position.</h1><p className="mt-5 text-lg leading-8 text-zinc-400">Watchman buys short-duration Down Event Contracts around your exposure, then watches settlement and redeems the hedge for you.</p></div><div className="mt-10 grid gap-6 lg:grid-cols-[1.15fr_.85fr]"><section className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6 sm:p-8"><div className="flex gap-2 rounded-xl bg-zinc-900 p-1"><button onClick={() => setMode("demo")} className={`flex-1 rounded-lg px-4 py-2.5 text-sm ${mode === "demo" ? "bg-white text-black" : "text-zinc-400"}`}>Demo mode</button><button onClick={() => void connectWallet()} className={`flex-1 rounded-lg px-4 py-2.5 text-sm ${mode === "wallet" ? "bg-white text-black" : "text-zinc-400"}`}>{wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}</button></div><div className={`mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium ${willSimulate ? "border border-amber-900/60 bg-amber-950/30 text-amber-300" : "border border-emerald-900/60 bg-emerald-950/30 text-emerald-300"}`}><span className={`h-1.5 w-1.5 rounded-full ${willSimulate ? "bg-amber-400" : "bg-emerald-400"}`} />{willSimulate ? "Simulated order — no funds needed" : "Live testnet execution"}</div><div className="mt-8 grid gap-5 sm:grid-cols-2"><label className="block text-sm text-zinc-400">Asset<select value={asset} onChange={(event) => setAsset(event.target.value as Asset)} className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-white"><option>BTC</option><option>ETH</option></select></label><label className="block text-sm text-zinc-400">Exposure USD<input type="number" min={1} value={exposureUsd} onChange={(event) => setExposureUsd(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-white" /></label></div><div className="mt-8"><div className="flex justify-between text-sm"><span className="text-zinc-400">Protection</span><strong>{protectionPct}%</strong></div><input aria-label="Protection percentage" type="range" min={10} max={100} step={5} value={protectionPct} onChange={(event) => setProtectionPct(Number(event.target.value))} className="mt-4 w-full accent-white" /></div><div className="mt-8 grid gap-5 sm:grid-cols-2"><div><p className="text-sm text-zinc-400">Protection window</p><div className="mt-2 flex gap-2"><button onClick={() => setWindowSeconds(900)} className={`rounded-xl px-4 py-3 text-sm ${windowSeconds === 900 ? "bg-white text-black" : "bg-zinc-900 text-zinc-400"}`}>15 min</button><button onClick={() => setWindowSeconds(3600)} className={`rounded-xl px-4 py-3 text-sm ${windowSeconds === 3600 ? "bg-white text-black" : "bg-zinc-900 text-zinc-400"}`}>1 hour</button></div></div><label className="block text-sm text-zinc-400">Max premium<input type="number" min={0.01} step={1} value={maxPremiumUsd} onChange={(event) => setMaxPremiumUsd(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-white" /></label></div><div className="mt-8 rounded-2xl border border-amber-900/60 bg-amber-950/20 p-4 text-sm leading-6 text-amber-200/80"><strong className="text-amber-200">Basis risk.</strong> A Down Event Contract is binary protection for a defined event window. It is not a perfect put, so the payout can differ from your portfolio&apos;s exact loss.</div>{mode === "wallet" && <div className="mt-4 flex items-center justify-between text-sm text-zinc-500"><span>tUSDC balance: {balance === undefined ? "checking…" : money(balance)}</span><button onClick={() => void fundWallet()} disabled={funding} className="rounded-lg bg-zinc-900 px-3 py-2 text-zinc-300">{funding ? "Funding…" : "Fund with tUSDC"}</button></div>}{fundMessage && <p className="mt-3 text-xs text-emerald-400">{fundMessage}</p>}{error && <p className="mt-4 rounded-xl border border-red-900 bg-red-950/30 p-4 text-sm text-red-300">{error}</p>}</section><aside className="h-fit rounded-3xl border border-zinc-800 bg-zinc-950 p-6 sm:p-8"><div className="flex items-center justify-between"><p className="text-sm text-zinc-500">Live quote</p><span className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-400">Somnia 50312</span></div>{loadingQuote ? <div className="mt-8 space-y-4"><div className="h-10 animate-pulse rounded bg-zinc-900" /><div className="h-20 animate-pulse rounded bg-zinc-900" /><div className="h-10 animate-pulse rounded bg-zinc-900" /></div> : quote ? <><p className="mt-6 text-4xl font-semibold">{(quote.downAsk * 100).toFixed(2)}¢</p><p className="mt-1 text-sm text-zinc-500">Down price · {quote.symbol}</p><dl className="mt-8 space-y-4 text-sm"><div className="flex justify-between"><dt className="text-zinc-500">Contracts</dt><dd>{quote.hedge.contractsToBuy.toLocaleString()}</dd></div><div className="flex justify-between"><dt className="text-zinc-500">Premium</dt><dd>{money(quote.hedge.premiumUsd)}</dd></div><div className="flex justify-between"><dt className="text-zinc-500">Potential payout</dt><dd>{money(quote.hedge.potentialPayoutUsd)}</dd></div><div className="flex justify-between"><dt className="text-zinc-500">Cost / protected</dt><dd>{quote.hedge.costPctOfProtected.toFixed(2)}%</dd></div></dl>{!quote.hedge.fullyFunded && <p className="mt-6 text-xs leading-5 text-amber-300">{quote.hedge.reason}</p>}<button disabled={protecting || quote.hedge.contractsToBuy <= 0} onClick={() => void protect()} className="mt-8 w-full rounded-2xl bg-white px-5 py-4 font-medium text-black disabled:cursor-not-allowed disabled:opacity-40">{protecting ? "Protecting…" : "Protect Position"}</button></> : <div className="mt-8 rounded-2xl bg-zinc-900/60 p-5"><p className="font-medium">No usable live quote</p><p className="mt-2 text-sm leading-6 text-zinc-500">{quoteError ?? "Waiting for a currently Trading DreamDEX market with Down liquidity."}</p></div>}{result && <div className="mt-5 rounded-2xl border border-emerald-900 bg-emerald-950/20 p-5"><div className="flex items-center gap-2"><p className="font-medium text-emerald-300">Protection created</p>{result.simulated && <span className="rounded-full border border-amber-900/60 bg-amber-950/30 px-2.5 py-0.5 text-[11px] font-medium text-amber-300">Simulated order</span>}</div><p className="mt-2 text-sm text-zinc-400">Hedge {result.hedgeId}</p>{result.simulated ? <p className="mt-2 text-xs text-zinc-500">No on-chain order was placed — this ran the full pipeline in simulation so you can see the whole flow without funding a wallet. Set PRIVATE_KEY for real testnet execution.</p> : result.txHash ? <a className="mt-2 block text-sm text-white underline" href={`https://shannon-explorer.somnia.network/tx/${result.txHash}`} target="_blank" rel="noreferrer">View transaction</a> : null}<a href={`/hedges/${result.hedgeId}`} className="mt-4 inline-block text-sm text-white underline">View hedge</a></div>}</aside></div></div></main>;
+  const protectedUsd = exposureUsd * (protectionPct / 100);
+
+  return (
+    <>
+      <SiteHeader variant="app" />
+      <main id="main" className="bg-paper">
+        {/* Page head */}
+        <section className="wm-rays wm-grain relative overflow-hidden border-b-[3px] border-ink" style={{ ["--ry" as string]: "42%" }}>
+          <div className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
+            <Tag tone="pink">Protect a position</Tag>
+            <h1 className="wm-display mt-7 text-[clamp(2.25rem,7vw,4.5rem)]">
+              KEEP THE POSITION.
+              <br />
+              PROTECT THE DOWNSIDE.
+            </h1>
+            <p className="mt-6 max-w-xl text-lg font-medium leading-8 text-ink/80">
+              Set your exposure and how much of it to cover. Watchman quotes the cheapest live Down
+              contract on DreamDEX and sizes the hedge to your premium budget.
+            </p>
+          </div>
+        </section>
+
+        <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr] lg:gap-8">
+            {/* ------------------------------------- CONFIGURE */}
+            <section aria-labelledby="configure-title">
+              <Panel className="p-6 sm:p-8">
+                <h2 id="configure-title" className="sr-only">Configure your protection</h2>
+
+                {/* Mode switch */}
+                <div role="group" aria-label="Execution mode" className="flex gap-2 rounded-2xl border-[3px] border-ink bg-paper-deep p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => { setMode("demo"); track("demo_started", { asset, exposureUsd }); }}
+                    aria-pressed={mode === "demo"}
+                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "demo" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"}`}
+                  >
+                    Demo mode
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void connectWallet()}
+                    aria-pressed={mode === "wallet"}
+                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "wallet" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"}`}
+                  >
+                    {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
+                  </button>
+                </div>
+
+                {/* Execution badge — must always be unmistakable */}
+                <p
+                  className={`mt-4 inline-flex items-center gap-2.5 rounded-full border-[3px] border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest ${willSimulate ? "bg-blue" : "bg-mint"}`}
+                >
+                  <span aria-hidden="true" className={`block h-2.5 w-2.5 rounded-full ${willSimulate ? "bg-ink" : "bg-ink"}`} />
+                  {willSimulate ? "Simulated order — no funds needed" : "Live testnet execution"}
+                </p>
+
+                {/* Asset + exposure */}
+                <div className="mt-8 grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="asset" className="wm-eyebrow text-ink-mute">Asset</label>
+                    <select
+                      id="asset"
+                      value={asset}
+                      onChange={(event) => setAsset(event.target.value as Asset)}
+                      className="wm-input wm-select mt-2.5"
+                    >
+                      <option>BTC</option>
+                      <option>ETH</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="exposure" className="wm-eyebrow text-ink-mute">Exposure (USD)</label>
+                    <input
+                      id="exposure"
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      value={exposureUsd}
+                      onChange={(event) => setExposureUsd(Number(event.target.value))}
+                      className="wm-input mt-2.5"
+                    />
+                  </div>
+                </div>
+
+                {/* Protection */}
+                <div className="mt-8">
+                  <div className="flex items-end justify-between gap-4">
+                    <label htmlFor="protection" className="wm-eyebrow text-ink-mute">Protection</label>
+                    <p className="wm-numeral text-3xl font-bold leading-none">{protectionPct}%</p>
+                  </div>
+                  <input
+                    id="protection"
+                    type="range"
+                    min={10}
+                    max={100}
+                    step={5}
+                    value={protectionPct}
+                    onChange={(event) => setProtectionPct(Number(event.target.value))}
+                    className="wm-range mt-4"
+                    style={{ ["--fill" as string]: `${((protectionPct - 10) / 90) * 100}%` }}
+                    aria-describedby="protection-help"
+                  />
+                  <p id="protection-help" className="mt-3 text-sm font-medium text-ink-soft">
+                    Covering <strong className="wm-tabular font-bold text-ink">{money(protectedUsd)}</strong> of your {money(exposureUsd)} position.
+                  </p>
+                </div>
+
+                {/* Window + premium */}
+                <div className="mt-8 grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <span className="wm-eyebrow text-ink-mute">Protection window</span>
+                    <div role="group" aria-label="Protection window" className="mt-2.5 flex gap-2.5">
+                      {([[900, "15 min"], [3600, "1 hour"]] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setWindowSeconds(value)}
+                          aria-pressed={windowSeconds === value}
+                          className={`flex-1 rounded-xl border-[3px] border-ink px-4 py-3 text-sm font-bold uppercase tracking-wide transition-all ${windowSeconds === value ? "bg-pink shadow-[3px_3px_0_0_#111]" : "bg-white text-ink-soft hover:bg-paper-deep"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="premium" className="wm-eyebrow text-ink-mute">Max premium (USD)</label>
+                    <input
+                      id="premium"
+                      type="number"
+                      min={0.01}
+                      step={1}
+                      inputMode="decimal"
+                      value={maxPremiumUsd}
+                      onChange={(event) => setMaxPremiumUsd(Number(event.target.value))}
+                      className="wm-input mt-2.5"
+                    />
+                  </div>
+                </div>
+
+                <BasisNote className="mt-8" />
+
+                {mode === "wallet" ? (
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-paper-deep p-4">
+                    <span className="text-sm font-bold">
+                      tUSDC balance:{" "}
+                      <span className="wm-numeral">{balance === undefined ? "checking…" : money(balance)}</span>
+                    </span>
+                    <Button tone="white" size="sm" onClick={() => void fundWallet()} disabled={funding}>
+                      {funding ? "Funding…" : "Fund with tUSDC"}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {fundMessage ? (
+                  <p role="status" className="mt-3 rounded-xl border-[3px] border-ink bg-mint px-4 py-3 text-sm font-bold">{fundMessage}</p>
+                ) : null}
+
+                {error ? (
+                  <p role="alert" className="mt-4 rounded-xl border-[3px] border-ink bg-flame px-4 py-3.5 text-sm font-bold text-paper">{error}</p>
+                ) : null}
+              </Panel>
+            </section>
+
+            {/* ------------------------------------- QUOTE */}
+            <section aria-labelledby="quote-title" className="lg:sticky lg:top-24 lg:self-start">
+              <Panel className="p-6 sm:p-8">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 id="quote-title" className="wm-eyebrow text-ink-mute">Live quote</h2>
+                  <Tag tone="blue" className="!px-3 !py-1 !shadow-none text-[10px]">Somnia 50312</Tag>
+                </div>
+
+                {loadingQuote && !quote ? (
+                  <div className="mt-7 space-y-4" aria-live="polite" aria-busy="true">
+                    <span className="sr-only">Loading quote…</span>
+                    <div className="wm-skel h-14 w-40" />
+                    <div className="wm-skel h-4 w-52" />
+                    <div className="mt-8 space-y-3">
+                      <div className="wm-skel h-6 w-full" />
+                      <div className="wm-skel h-6 w-full" />
+                      <div className="wm-skel h-6 w-full" />
+                      <div className="wm-skel h-6 w-full" />
+                    </div>
+                    <div className="wm-skel h-14 w-full rounded-2xl" />
+                  </div>
+                ) : quote ? (
+                  <div aria-live="polite">
+                    <div className="mt-6 flex items-end gap-3">
+                      <p className="wm-numeral text-6xl font-bold leading-none">{(quote.downAsk * 100).toFixed(1)}¢</p>
+                      {loadingQuote ? <span className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-mute">updating…</span> : null}
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-ink-soft">Down price · {quote.symbol}</p>
+
+                    <dl className="mt-7 divide-y-[3px] divide-paper-deep">
+                      <Row label="Contracts" value={count(quote.hedge.contractsToBuy)} />
+                      <Row label="Premium" value={money(quote.hedge.premiumUsd)} />
+                      <Row label="Potential payout" value={money(quote.hedge.potentialPayoutUsd)} />
+                      <Row label="Cost / protected" value={pct(quote.hedge.costPctOfProtected)} />
+                    </dl>
+
+                    {!quote.hedge.fullyFunded ? (
+                      <p className="mt-5 rounded-xl border-[3px] border-ink bg-yellow px-4 py-3 text-sm font-bold leading-6">
+                        {quote.hedge.reason}
+                      </p>
+                    ) : null}
+
+                    <Button
+                      tone="yellow"
+                      size="lg"
+                      full
+                      className="group mt-7"
+                      disabled={protecting || quote.hedge.contractsToBuy <= 0}
+                      onClick={() => void protect()}
+                    >
+                      {protecting ? "Protecting…" : "Protect position"}
+                      {!protecting ? <Arrow /> : null}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-7 rounded-2xl border-[3px] border-ink bg-paper-deep p-6" aria-live="polite">
+                    <p className="text-lg font-bold">No usable live quote</p>
+                    <p className="mt-2.5 text-sm leading-6 text-ink-soft">
+                      Watchman is waiting for a currently Trading DreamDEX market with Down
+                      liquidity for this asset and window. Try the other window, or check back in a
+                      moment.
+                    </p>
+                    {quoteError ? (
+                      <details className="mt-4 rounded-xl border-[3px] border-ink bg-white px-4 py-3">
+                        <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-widest text-ink-soft">
+                          Technical detail
+                        </summary>
+                        <p className="wm-numeral mt-3 break-words text-xs leading-5 text-ink-soft">
+                          {quoteError}
+                        </p>
+                      </details>
+                    ) : null}
+                  </div>
+                )}
+
+                {result ? (
+                  <div role="status" className="mt-6 rounded-2xl border-[3px] border-ink bg-mint p-5">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <p className="text-lg font-bold">Protection created</p>
+                      {result.simulated ? (
+                        <span className="rounded-full border-[3px] border-ink bg-blue px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest">
+                          Simulated order
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="wm-numeral mt-2 break-all text-xs font-bold text-ink-soft">{result.hedgeId}</p>
+                    {result.simulated ? (
+                      <p className="mt-3 text-sm leading-6">
+                        No on-chain order was placed — the full pipeline ran in simulation so you can
+                        see the whole flow without funding a wallet.
+                      </p>
+                    ) : result.txHash ? (
+                      <a
+                        className="mt-3 inline-block text-sm font-bold underline decoration-[3px] underline-offset-4"
+                        href={`https://shannon-explorer.somnia.network/tx/${result.txHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View transaction ↗
+                      </a>
+                    ) : null}
+                    <a
+                      href={`/hedges/${result.hedgeId}`}
+                      className="wm-press mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-ink px-5 py-3.5 text-sm font-bold uppercase tracking-wide text-paper no-underline"
+                    >
+                      View hedge
+                    </a>
+                  </div>
+                ) : null}
+              </Panel>
+
+              <p className="mt-5 px-1 text-sm leading-6 text-ink-soft">
+                Watchman re-checks the market on-chain immediately before sending any order. If the
+                market stops trading, the quote is refused rather than filled at a stale price.
+              </p>
+            </section>
+          </div>
+        </div>
+      </main>
+      <SiteFooter />
+    </>
+  );
 }

@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SiteHeader from "../components/SiteHeader";
+import SiteFooter from "../components/SiteFooter";
+import { Arrow, ButtonLink, Panel, StatusPill, Tag } from "../components/ui";
+import ErrorState from "../components/ErrorState";
+import { track } from "../components/analytics";
+import { money, protectionLabel, shortDate, untilLabel } from "../components/format";
 
 interface HedgeRow { id: string; asset: string; marketSymbol: string; protectionPct: string; exposureUsd: string; premiumUsd: string; expiry: string; status: string; txHash: string | null; receipt: { id: string } | null }
 
@@ -8,6 +14,7 @@ export default function HedgesPage(): React.ReactElement {
   const [wallet, setWallet] = useState("demo");
   const [hedges, setHedges] = useState<HedgeRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
     const stored = window.localStorage.getItem("watchman.wallet");
@@ -16,11 +23,117 @@ export default function HedgesPage(): React.ReactElement {
 
   useEffect(() => {
     setLoading(true);
-    void fetch(`/api/hedges?wallet=${encodeURIComponent(wallet)}`).then(async (response) => {
-      const data = (await response.json()) as { hedges?: HedgeRow[] };
-      setHedges(data.hedges ?? []);
-    }).finally(() => setLoading(false));
+    setError(undefined);
+    void fetch(`/api/hedges?wallet=${encodeURIComponent(wallet)}`)
+      .then(async (response) => {
+        const data = (await response.json()) as { hedges?: HedgeRow[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Unable to load hedges");
+        setHedges(data.hedges ?? []);
+        track("hedge_list_viewed", { count: data.hedges?.length ?? 0, wallet: wallet === "demo" ? "demo" : "wallet" });
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load hedges"))
+      .finally(() => setLoading(false));
   }, [wallet]);
 
-  return <main className="min-h-screen bg-black px-5 py-10 text-zinc-100 sm:px-8"><div className="mx-auto max-w-5xl"><div className="flex justify-between"><a href="/" className="text-sm text-zinc-500">← Watchman</a><a href="/protect" className="text-sm text-zinc-400">Protect another position</a></div><h1 className="mt-14 text-4xl font-semibold">Your hedges</h1><p className="mt-3 text-zinc-500">Every position Watchman has opened and is tracking.</p>{loading ? <div className="mt-10 h-32 animate-pulse rounded-2xl bg-zinc-900" /> : hedges.length === 0 ? <div className="mt-10 rounded-2xl border border-zinc-800 bg-zinc-950 p-10 text-center"><p className="text-lg">No hedges yet</p><p className="mt-2 text-sm text-zinc-500">Protect a position and it will appear here.</p></div> : <div className="mt-10 space-y-3">{hedges.map((hedge) => <a key={hedge.id} href={`/hedges/${hedge.id}`} className="block rounded-2xl border border-zinc-800 bg-zinc-950 p-5 hover:border-zinc-600"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-medium">{hedge.asset} · {hedge.marketSymbol}</p><p className="mt-1 text-sm text-zinc-500">{hedge.protectionPct}% protection · {hedge.exposureUsd} exposure</p></div><span className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-300">{hedge.status}</span></div><div className="mt-5 flex flex-wrap gap-6 text-sm"><span><b>{hedge.premiumUsd}</b> premium</span><span>expires {new Date(hedge.expiry).toLocaleString()}</span>{hedge.receipt && <span className="text-white">Receipt ready</span>}</div></a>)}</div>}</div></main>;
+  return (
+    <>
+      <SiteHeader variant="app" />
+      <main id="main" className="min-h-screen bg-paper">
+        <section className="wm-rays-soft wm-grain relative overflow-hidden border-b-[3px] border-ink">
+          <div className="relative mx-auto max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Tag tone="pink">Your hedges</Tag>
+              <Tag tone="white">{wallet === "demo" ? "Demo account" : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`}</Tag>
+            </div>
+            <h1 className="wm-display mt-7 text-[clamp(2.25rem,7vw,4.25rem)]">
+              EVERY POSITION WATCHMAN IS WATCHING.
+            </h1>
+          </div>
+        </section>
+
+        <div className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
+          {loading ? (
+            <div className="space-y-4" aria-busy="true" aria-live="polite">
+              <span className="sr-only">Loading hedges…</span>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="rounded-[22px] border-[3px] border-ink bg-white p-6">
+                  <div className="wm-skel h-6 w-56" />
+                  <div className="wm-skel mt-3 h-4 w-72" />
+                  <div className="wm-skel mt-6 h-4 w-40" />
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <ErrorState title="Couldn't load your hedges" detail={error}>
+              <ButtonLink href="/protect" tone="yellow" className="group">
+                Protect a position <Arrow />
+              </ButtonLink>
+            </ErrorState>
+          ) : hedges.length === 0 ? (
+            <Panel className="p-10 text-center sm:p-14">
+              <p className="wm-numeral text-6xl font-bold text-blue">00</p>
+              <h2 className="mt-5 text-2xl font-bold">No hedges yet</h2>
+              <p className="mx-auto mt-3 max-w-md text-base leading-7 text-ink-soft">
+                Protect a position and it appears here, tracked until the contract settles and a
+                receipt is written.
+              </p>
+              <div className="mt-8 flex justify-center">
+                <ButtonLink href="/protect" tone="yellow" size="lg" className="group">
+                  Protect a position <Arrow />
+                </ButtonLink>
+              </div>
+            </Panel>
+          ) : (
+            <ul className="space-y-4">
+              {hedges.map((hedge) => (
+                <li key={hedge.id}>
+                  <a
+                    href={`/hedges/${hedge.id}`}
+                    className="wm-lift block rounded-[22px] border-[3px] border-ink bg-white p-6 no-underline shadow-[6px_6px_0_0_#111] sm:p-7"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xl font-bold tracking-tight">
+                          {hedge.asset} · {protectionLabel(hedge.protectionPct)} protection
+                        </p>
+                        <p className="mt-1.5 text-sm font-medium text-ink-soft">{hedge.marketSymbol}</p>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        {hedge.receipt ? (
+                          <span className="rounded-full border-[3px] border-ink bg-yellow px-3 py-1 text-[11px] font-bold uppercase tracking-widest">
+                            Receipt ready
+                          </span>
+                        ) : null}
+                        <StatusPill status={hedge.status} />
+                      </div>
+                    </div>
+
+                    <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                      <div>
+                        <dt className="wm-eyebrow text-ink-mute">Exposure</dt>
+                        <dd className="wm-numeral mt-1.5 text-lg font-bold">{money(hedge.exposureUsd)}</dd>
+                      </div>
+                      <div>
+                        <dt className="wm-eyebrow text-ink-mute">Premium</dt>
+                        <dd className="wm-numeral mt-1.5 text-lg font-bold">{money(hedge.premiumUsd)}</dd>
+                      </div>
+                      <div>
+                        <dt className="wm-eyebrow text-ink-mute">Expiry</dt>
+                        <dd className="wm-numeral mt-1.5 text-lg font-bold">{shortDate(hedge.expiry)}</dd>
+                      </div>
+                      <div>
+                        <dt className="wm-eyebrow text-ink-mute">Window</dt>
+                        <dd className="wm-numeral mt-1.5 text-lg font-bold">{untilLabel(hedge.expiry)}</dd>
+                      </div>
+                    </dl>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </main>
+      <SiteFooter />
+    </>
+  );
 }
