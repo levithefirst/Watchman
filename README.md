@@ -4,11 +4,7 @@
 
 ## Problem → Solution
 
-Holding BTC or ETH through a volatile window (a CPI print, an unlock, the next 15 minutes) usually means one of two bad choices: sell the position and eat the tax/opportunity cost, or hold it and eat the drawdown. Perpetual futures hedges bring funding costs and liquidation risk. Traditional options aren't available for most retail holders, especially on-chain.
-
-DreamDEX already lists short-duration binary Event Contracts ("will BTC be up or down in the next 15 minutes / hour") on Somnia. Those are a trading primitive, not a product — a trader still has to find the right market, size a position against their actual exposure, execute before the window closes, track settlement, and figure out what actually happened to their money.
-
-**Watchman is that missing layer.** Tell it an exposure, a protection percentage, and a premium budget. It finds the cheapest currently-tradeable Down contract, sizes the hedge, executes an IOC order, watches the market resolve, redeems the winning side, and hands back a Hedge Receipt showing exactly what the hedge did to the position's P&L — in plain numbers, with basis risk stated up front rather than buried in a footnote.
+Holding BTC or ETH through a volatile window (a CPI print, an unlock, the next 15 minutes) usually forces a bad tradeoff: sell and eat the tax/opportunity cost, or hold and eat the drawdown — perp hedges add funding costs and liquidation risk, and real options aren't available to most on-chain holders. DreamDEX already lists short-duration binary Event Contracts on Somnia that could hedge this, but they're a raw trading primitive: someone still has to find the right market, size it against their actual exposure, execute before the window closes, and track what happened to their money. **Watchman is that missing layer** — give it an exposure, a protection percentage, and a premium budget, and it finds the cheapest tradeable Down contract, sizes the hedge, executes the order, watches the market resolve, redeems the winning side, and hands back a Hedge Receipt showing exactly what the hedge did to the position's P&L, basis risk stated up front rather than buried in a footnote.
 
 ## Why this is different
 
@@ -19,16 +15,14 @@ Most hackathon submissions against an event-contract market either (a) build ano
 - **It closes the loop end to end.** Quote → size → execute → settle → redeem → receipt is one pipeline with one data model (`User → Exposure → Hedge → Receipt`), not a UI bolted onto someone else's order book. The settlement worker resolves against the on-chain market state (`getMarketOnchain(marketId).status`), not a cached indexer row, because pool addresses on DreamDEX are recycled across markets.
 - **Judges can run the entire flow with zero setup.** No wallet, no faucet, no funding. Demo mode runs the real quoting and sizing logic against live DreamDEX markets and only skips the final on-chain write, so the numbers are real even when the transaction is simulated.
 
-## Live demo walkthrough
+## Best demo path (4 steps)
 
-1. Open the landing page and click **"Try Demo — $10k BTC, 50%, 15m"**. This goes straight to `/protect` pre-filled with a $10,000 BTC exposure, 50% protection, and a 15‑minute window in Demo mode — no wallet needed.
-2. Watch the **Live quote** panel on the right fill in from a real DreamDEX Down market: current Down price, contracts, premium, and potential payout, refreshed as you adjust the sliders.
-3. Note the badge under the mode toggle — **"Simulated order"** (amber) when no `PRIVATE_KEY` is configured, or **"Live testnet execution"** (green) when it is.
-4. Click **Protect Position**. Watchman sizes the hedge against your premium budget, and either places a real IOC order (if `PRIVATE_KEY` is set and you're in Wallet mode) or runs the identical pipeline in simulation.
-5. Open the created hedge from the confirmation card, or visit **/hedges** to see everything Watchman is tracking.
-6. Once the Event Contract's window closes and the market resolves, the settlement agent (`apps/agent`) picks it up automatically, redeems the winning side if applicable, and writes a **Hedge Receipt**.
-7. Open the receipt — **"What the hedge actually did"** states in one sentence how far the underlying moved and what the hedge paid out, followed by exposure, premium, actual move, payout, unhedged P&L, hedged P&L, net protection, and efficiency.
-8. Optionally visit **/policy** to hand Watchman a standing rule ("keep 50% of my BTC exposure protected for the next 15 minutes, budget $150") — the agent evaluates active policies every poll and opens a new hedge automatically when none is open.
+1. **Click "Try Demo — $10k BTC, 50%, 15m"** on the landing page. This goes straight to `/protect` pre-filled with a $10,000 BTC exposure, 50% protection, and a 15-minute window in Demo mode — no wallet, no funding.
+2. **Review the live quote and click "Protect Position."** The quote panel is pulling a real DreamDEX Down market (current Down price, contracts, premium, potential payout). The amber **"Simulated order"** badge confirms no on-chain transaction will fire.
+3. **Open the created hedge** from the confirmation card, or visit `/hedges` to see it being tracked.
+4. **Open the Hedge Receipt** once the window resolves and the settlement agent processes it — "What the hedge actually did" states the result in one sentence, followed by exposure, premium, actual move, payout, unhedged vs. hedged P&L, net protection, and efficiency.
+
+Optional extras to show: `/policy` lets you hand Watchman a standing rule the agent evaluates automatically, and switching to Wallet mode with `PRIVATE_KEY` configured flips the badge to **"Live testnet execution"** and places a real IOC order.
 
 ## Architecture
 
@@ -100,23 +94,9 @@ Leave `PRIVATE_KEY` unset to develop entirely in simulation — quoting and sizi
 
 ## How to deploy
 
-### Vercel — `apps/web`
+Full click-by-click instructions (Neon database → Vercel → Railway, zero to live in under 10 minutes) live in **[DEPLOY.md](./DEPLOY.md)**.
 
-1. Import the repo, set the project **Root Directory** to `apps/web`.
-2. Build command: `cd ../.. && pnpm --filter @watchman/db generate && pnpm --filter @watchman/sdk build && pnpm --filter @watchman/web build`. Output directory stays the Next.js default (`.next`).
-3. Environment variables: `DATABASE_URL` (required), `PRIVATE_KEY` (optional — omit it to run Vercel in demo-only mode).
-4. Apply the Prisma migration against your production database once, from any machine with `DATABASE_URL` set: `pnpm db:migrate:deploy`.
-5. The in-app `/api/faucet` helper is disabled automatically whenever `NODE_ENV=production`, so it can't be used to drain a shared funded wallet from a public deployment.
-
-### Railway — `apps/agent`
-
-1. Create a service from the repo, root directory can stay the monorepo root.
-2. Build command: `pnpm --filter @watchman/db generate && pnpm --filter @watchman/db build && pnpm --filter @watchman/sdk build && pnpm --filter @watchman/agent build`.
-3. Start command: `pnpm --filter @watchman/agent start` — this runs the continuous settlement + policy loop (`apps/agent/src/index.ts`), polling every `SETTLEMENT_POLL_MS` (default 10s) forever.
-4. Environment variables: `DATABASE_URL` (required, same database as the web app), `PRIVATE_KEY` (required for real redemption and policy-driven execution — without it the agent still settles and writes receipts, using simulated payouts), `SETTLEMENT_POLL_MS` (optional).
-5. This must be a long-running worker, not a cron job or serverless function — the loop is the product's settlement guarantee.
-
-With both `DATABASE_URL` and `PRIVATE_KEY` set on both services, Watchman runs its full production path: real IOC orders from `apps/web`, real on-chain redemption from `apps/agent`, against one shared Postgres database.
+Short version: `apps/web` deploys to Vercel with Root Directory `apps/web` and a custom build command that generates Prisma Client and builds `@watchman/sdk` first; `apps/agent` deploys to Railway as a long-running worker (not a cron job) running `pnpm --filter @watchman/agent start`. Both need the same `DATABASE_URL`; `PRIVATE_KEY` is optional on both and controls whether orders are simulated or real. See [.env.example](./.env.example) for the full variable reference.
 
 ## Tech stack
 
