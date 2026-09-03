@@ -28,14 +28,15 @@ You'll set up the database first, then each service. No coding required — just
    | **Framework Preset** | Next.js *(auto-detected)* |
    | **Root Directory** | `apps/web` — click **Edit** next to it to set this |
    | **Install Command** | leave as-is — `apps/web/vercel.json` in the repo sets it to `pnpm install --frozen-lockfile` automatically |
-   | **Build Command** | leave as-is — `apps/web/vercel.json` sets it to build `@watchman/db` and `@watchman/sdk` before `@watchman/web` automatically |
+   | **Build Command** | leave as-is — `apps/web/vercel.json` sets it to `pnpm --filter @watchman/web build` automatically |
    | **Output Directory** | leave at the default (`.next`) |
 
-   You should not need to type anything into the Build/Install Command boxes — the repo's `apps/web/vercel.json` configures them for you the moment Vercel detects Root Directory `apps/web`. If you ever do need to set them by hand (e.g. Vercel's UI insists on a value), use:
+   You should not need to type anything into the Build/Install Command boxes — the repo's `apps/web/vercel.json` configures them for you the moment Vercel detects Root Directory `apps/web`. If you ever do need to set them by hand (e.g. Vercel's UI insists on a value), use exactly:
    ```
    Install Command: pnpm install --frozen-lockfile
-   Build Command:   pnpm --filter @watchman/db generate && pnpm --filter @watchman/db build && pnpm --filter @watchman/sdk build && pnpm --filter @watchman/web build
+   Build Command:   pnpm --filter @watchman/web build
    ```
+   **Important:** if your Vercel project already has a *different* Build or Install Command saved from an earlier attempt, delete it (leave the field blank / toggle "Override" off) rather than pasting the one above over it — a saved override always wins over `vercel.json`, so the old broken value would keep taking effect otherwise.
 4. Open **Environment Variables** and add:
 
    | Name | Value |
@@ -48,7 +49,7 @@ You'll set up the database first, then each service. No coding required — just
 
 > **About `PRIVATE_KEY` on Vercel:** leaving it unset is the recommended setup for a public demo. Judges get the full quote → hedge → receipt flow with a clear "Simulated order" badge and nothing to fund. Only set it if you specifically want visitors to place real testnet orders — see [Real execution (optional)](#real-execution-optional) below.
 >
-> **Why this used to fail:** `packages/db` and `packages/sdk` are internal workspace packages that must be compiled to `dist/` before `@watchman/web` can import them, and Next.js doesn't transpile `node_modules` (which is where pnpm symlinks workspace packages) by default. `apps/web/vercel.json` now guarantees the two packages build first, and `apps/web/next.config.ts` sets `transpilePackages: ["@watchman/sdk", "@watchman/db"]` so Next treats them as first-party source. If you still see `Module not found: Can't resolve '@watchman/sdk'` or `'@watchman/db'`, your Vercel project was configured before this fix — go to **Project Settings → Build & Deployment** and clear any manually-saved Install/Build Command overrides so the repo's `vercel.json` takes effect, then redeploy.
+> **Why this used to fail:** `packages/db` and `packages/sdk` are internal workspace packages. The first fix attempt made `apps/web` build them to `dist/` before its own build — correct in theory, but it only worked if Vercel actually ran that exact multi-step command, which depended on dashboard state we couldn't verify. The real fix removes that dependency entirely: `packages/db` and `packages/sdk` now ship their TypeScript **source** directly (`package.json` "main"/"exports" point at `src/index.ts`, no build step, no `dist/` at all), and `apps/web/next.config.ts` sets `transpilePackages: ["@watchman/sdk", "@watchman/db"]` plus a small webpack `resolve.extensionAlias` tweak so Next compiles that source in-place as part of the single `next build`. There is no longer a "build the workspace packages first" step to get wrong or skip.
 
 ---
 
@@ -58,15 +59,16 @@ The website alone can create hedges, but something needs to keep checking whethe
 
 1. Go to [railway.app](https://railway.app) and sign in with the same GitHub account.
 2. Click **New Project → Deploy from GitHub repo**, then select the `Watchman` repo.
-3. Railway creates one service from the repo — click into it, then go to **Settings** and set exactly these values:
+3. Railway creates one service from the repo — the repo's root-level `railway.json` configures its build and start commands automatically. Click into the service, go to **Settings**, and confirm (you shouldn't need to change anything):
 
    | Setting | Value |
    |---|---|
-   | **Root Directory** | leave at the default (the repository root) — do **not** set this to `apps/agent`; the build command below needs the full workspace |
-   | **Build Command** | `pnpm --filter @watchman/db generate && pnpm --filter @watchman/db build && pnpm --filter @watchman/sdk build && pnpm --filter @watchman/agent build` |
-   | **Start Command** | `pnpm --filter @watchman/agent start` |
+   | **Root Directory** | leave at the default (the repository root) — do **not** set this to `apps/agent` |
+   | **Build Command** | from `railway.json`: `pnpm install --frozen-lockfile` |
+   | **Start Command** | from `railway.json`: `pnpm --filter @watchman/agent start` — runs the agent directly via `tsx` (no separate compile step) |
    | **Deploy type** | a normal always-on service (Railway's default) — **not** a cron/scheduled job. This loop must run continuously to settle hedges. |
 
+   If Settings shows different values (e.g. blank, or something left over from an earlier attempt), clear them so `railway.json` takes effect, or paste the values above manually.
 4. Go to the **Variables** tab and add:
 
    | Name | Value |
@@ -122,8 +124,9 @@ If you want the deployed site to place real testnet orders instead of simulating
 
 ## Troubleshooting
 
-- **`Module not found: Can't resolve '@watchman/sdk'` or `'@watchman/db'`** — the workspace packages weren't built before `apps/web` was. This should no longer happen (`apps/web/vercel.json` + `next.config.ts` fix it automatically), but if your Vercel project has a manually-saved Build/Install Command from before this fix, clear it under **Project Settings → Build & Deployment** so `vercel.json` takes effect, then redeploy.
-- **Vercel build fails on the Prisma step** — double check the Root Directory is `apps/web` and that you haven't overridden the Build Command with something that skips `pnpm --filter @watchman/db generate`.
+- **`Module not found: Can't resolve '@watchman/sdk'` or `'@watchman/db'`** — these packages no longer need a build step (they ship TypeScript source directly, transpiled in-place by Next), so this specific error should not recur. If it does, your Vercel project almost certainly has an old Build or Install Command saved in **Project Settings → Build & Deployment** from before this fix — clear it (or overwrite it with the exact values in step 1 above) so `apps/web/vercel.json` takes effect, then redeploy. A saved dashboard value always wins over `vercel.json`.
+- **Railway build fails / "Failed to build an image"** — same root cause as above, or Railway ignoring `railway.json`. Check **Settings** on the service and clear any manually-saved Build/Start Command so `railway.json` takes effect.
+- **Vercel build fails on a Prisma-related TypeScript error** (e.g. "Cannot find module '@prisma/client'") — `packages/db`'s `postinstall` script runs `prisma generate` automatically during `pnpm install`; this doesn't require `DATABASE_URL` to be set or reachable, only that `pnpm install` actually ran (i.e. the Install Command wasn't skipped or overridden).
 - **Site loads but quotes never populate** — this is independent of your database; it means DreamDEX/Somnia's public endpoints are unreachable from Vercel's region, or the network is temporarily down. Retry after a minute.
 - **Hedges never get a receipt** — the Railway worker isn't running, crashed, or has a different `DATABASE_URL` than Vercel. Check the Railway logs.
 - **"disabled in production" error on the faucet button** — expected behavior, see the `PRIVATE_KEY` note above.

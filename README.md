@@ -96,7 +96,7 @@ Leave `PRIVATE_KEY` unset to develop entirely in simulation — quoting and sizi
 
 Full click-by-click instructions (Neon database → Vercel → Railway, zero to live in under 10 minutes) live in **[DEPLOY.md](./DEPLOY.md)**.
 
-Short version: `apps/web` deploys to Vercel with Root Directory `apps/web` — `apps/web/vercel.json` and `next.config.ts` (`transpilePackages`) automatically build `@watchman/db` and `@watchman/sdk` first and make Next resolve them correctly, so no manual build-command setup is needed. `apps/agent` deploys to Railway as a long-running worker (not a cron job) running `pnpm --filter @watchman/agent start`. Both need the same `DATABASE_URL`; `PRIVATE_KEY` is optional on both and controls whether orders are simulated or real. See [.env.example](./.env.example) for the full variable reference.
+Short version: `packages/db` and `packages/sdk` ship as raw TypeScript source (no build step), so `apps/web` deploys to Vercel with Root Directory `apps/web` and just runs `pnpm --filter @watchman/web build` (`apps/web/vercel.json` + `next.config.ts`'s `transpilePackages` make Next compile that source in-place — nothing to build first, nothing to get wrong). `apps/agent` deploys to Railway (root-level `railway.json`) as a long-running worker (not a cron job) running `pnpm --filter @watchman/agent start`, which runs the agent directly via `tsx` — no compile step there either. Both services need the same `DATABASE_URL`; `PRIVATE_KEY` is optional on both and controls whether orders are simulated or real. See [.env.example](./.env.example) for the full variable reference.
 
 ## Tech stack
 
