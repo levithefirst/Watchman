@@ -64,11 +64,14 @@ The website alone can create hedges, but something needs to keep checking whethe
    | Setting | Value |
    |---|---|
    | **Root Directory** | leave at the default (the repository root) — do **not** set this to `apps/agent` |
-   | **Build Command** | from `railway.json`: `pnpm install --frozen-lockfile` |
+   | **Build Command** | from `railway.json`: `pnpm --filter @watchman/agent build` |
+   | **Pre-Deploy Command** | from `railway.json`: `pnpm --filter @watchman/db exec prisma migrate deploy` — **required**, see the warning below |
    | **Start Command** | from `railway.json`: `pnpm --filter @watchman/agent start` — runs the agent directly via `tsx` (no separate compile step) |
    | **Deploy type** | a normal always-on service (Railway's default) — **not** a cron/scheduled job. This loop must run continuously to settle hedges. |
 
-   If Settings shows different values (e.g. blank, or something left over from an earlier attempt), clear them so `railway.json` takes effect, or paste the values above manually.
+   > **Do not clear the Pre-Deploy Command.** It is what applies the Prisma migrations to the production database on every deploy. Without it the agent starts, connects, and then fails every poll with `The table 'public.Hedge' does not exist in the current database` — hedges never settle and no receipt is ever written. `railway.json` now carries this command too, so a service created fresh from the repo gets it automatically; if Settings shows it blank on an existing service, paste the value above in manually.
+
+   If any other setting shows a leftover value from an earlier attempt that contradicts the table above, replace it with the value shown here.
 4. Go to the **Variables** tab and add:
 
    | Name | Value |
@@ -84,9 +87,17 @@ The website alone can create hedges, but something needs to keep checking whethe
 
 ---
 
-## 3. Apply the database schema (1 minute)
+## 3. Apply the database schema (automatic)
 
-The database Neon created is empty — it needs the Watchman tables. Run this once, from your own computer, with `DATABASE_URL` pointed at the same Neon database:
+The database Neon created is empty — it needs the `User`, `Exposure`, `Hedge`, `Receipt`, and `Policy` tables. **This happens automatically**: the Railway service's Pre-Deploy Command runs `prisma migrate deploy` before the agent starts, on every deploy. Confirm it worked in the Railway **Logs** tab — a healthy first deploy shows:
+
+```
+1 migration found in prisma/migrations
+Applying migration `20260903000000_init`
+All migrations have been successfully applied.
+```
+
+If you ever need to apply migrations by hand (e.g. you're not using Railway), run this once from your own computer with `DATABASE_URL` pointed at the same Neon database:
 
 ```bash
 git clone <your fork/repo URL>
@@ -94,8 +105,6 @@ cd Watchman
 pnpm install
 DATABASE_URL="<paste your Neon connection string>" pnpm db:migrate:deploy
 ```
-
-This creates the `User`, `Exposure`, `Hedge`, `Receipt`, and `Policy` tables. You only need to do this once per database — re-deploys on Vercel/Railway don't repeat it.
 
 ---
 
@@ -125,7 +134,8 @@ If you want the deployed site to place real testnet orders instead of simulating
 ## Troubleshooting
 
 - **`Module not found: Can't resolve '@watchman/sdk'` or `'@watchman/db'`** — these packages no longer need a build step (they ship TypeScript source directly, transpiled in-place by Next), so this specific error should not recur. If it does, your Vercel project almost certainly has an old Build or Install Command saved in **Project Settings → Build & Deployment** from before this fix — clear it (or overwrite it with the exact values in step 1 above) so `apps/web/vercel.json` takes effect, then redeploy. A saved dashboard value always wins over `vercel.json`.
-- **Railway build fails / "Failed to build an image"** — same root cause as above, or Railway ignoring `railway.json`. Check **Settings** on the service and clear any manually-saved Build/Start Command so `railway.json` takes effect.
+- **Railway build fails / "Failed to build an image"** — same root cause as above. Check **Settings** on the service and make the Build/Start commands match the table in step 2. Do not blanket-clear the Settings fields: the **Pre-Deploy Command** must survive, or migrations stop running (see next item).
+- **Agent logs `The table 'public.Hedge' does not exist in the current database`** — the Prisma migrations never ran against this database. The **Pre-Deploy Command** (`pnpm --filter @watchman/db exec prisma migrate deploy`) is missing or was cleared from the Railway service. Restore it per step 2 and redeploy; a healthy deploy logs `All migrations have been successfully applied.` before the agent's startup banner.
 - **Vercel build fails on a Prisma-related TypeScript error** (e.g. "Cannot find module '@prisma/client'") — `packages/db`'s `postinstall` script runs `prisma generate` automatically during `pnpm install`; this doesn't require `DATABASE_URL` to be set or reachable, only that `pnpm install` actually ran (i.e. the Install Command wasn't skipped or overridden).
 - **Site loads but quotes never populate** — this is independent of your database; it means DreamDEX/Somnia's public endpoints are unreachable from Vercel's region, or the network is temporarily down. Retry after a minute.
 - **Hedges never get a receipt** — the Railway worker isn't running, crashed, or has a different `DATABASE_URL` than Vercel. Check the Railway logs.
