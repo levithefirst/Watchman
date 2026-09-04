@@ -2,7 +2,7 @@
  * Which commit is this deployment actually running?
  *
  * This exists because "is the fix live?" kept being unanswerable without
- * Vercel dashboard access — an evaluator reported stale numbers on the live
+ * Vercel dashboard access. An evaluator reported stale numbers on the live
  * site while the repository was already fixed, and there was no way to tell
  * from the outside whether production was serving an older build.
  *

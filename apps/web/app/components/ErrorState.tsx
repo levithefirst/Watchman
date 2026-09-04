@@ -31,7 +31,7 @@ export default function ErrorState({
             {title}
           </p>
           <p className="mt-2 text-base leading-7 text-ink-soft">
-            Something upstream didn&apos;t respond as expected. Your data is safe — try again in a
+            Something upstream didn&apos;t respond as expected. Your data is safe. Try again in a
             moment.
           </p>
           {detail ? (

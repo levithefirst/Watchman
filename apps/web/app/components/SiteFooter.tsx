@@ -65,7 +65,7 @@ export default function SiteFooter(): React.ReactElement {
         <div className="mt-12 border-t-[3px] border-paper/20 pt-6 text-xs leading-6 text-paper/60">
           <p>
             Testnet software for demonstration. Event Contracts are binary outcomes, not perfect
-            puts — a hedge can pay out differently from the loss on the underlying position. Nothing
+            puts. A hedge can pay out differently from the loss on the underlying position. Nothing
             here is financial advice.
           </p>
           <p className="wm-numeral mt-4 text-[11px] text-paper/40">

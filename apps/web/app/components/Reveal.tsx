@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 /**
  * Reveals children once on scroll-in. Motion is CSS-gated by
  * prefers-reduced-motion, and content is always in the DOM (never hidden from
- * assistive tech or crawlers) — only opacity/transform animate.
+ * assistive tech or crawlers). Only opacity/transform animate.
  */
 export default function Reveal({
   children,
@@ -56,7 +56,7 @@ export default function Reveal({
   return (
     <As
       // `As` is a union of intrinsic tags whose ref types don't unify, but every
-      // branch is an HTMLElement — all the observer needs. One contained cast.
+      // branch is an HTMLElement, all the observer needs. One contained cast.
       ref={ref as never}
       className={`wm-reveal ${shown ? "wm-in" : ""} ${className}`}
       style={{ transitionDelay: `${delay}ms` }}

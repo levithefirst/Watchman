@@ -17,6 +17,7 @@ export type WatchmanEvent =
   | "hedge_list_viewed"
   | "policy_created"
   | "faucet_requested"
+  | "funding_help_opened"
   | "cta_clicked";
 
 type Payload = Record<string, string | number | boolean | null | undefined>;

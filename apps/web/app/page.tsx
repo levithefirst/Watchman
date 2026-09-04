@@ -15,7 +15,7 @@ import {
 } from "./components/scenario";
 
 export const metadata: Metadata = {
-  title: "Watchman — Keep the position. Protect the downside.",
+  title: "Watchman: Keep the position. Protect the downside.",
   description:
     "Watchman turns DreamDEX Event Contracts into short-duration portfolio insurance. Protect a defined amount of BTC or ETH downside for the next 15 minutes or hour without selling.",
   alternates: { canonical: "/" },
@@ -83,7 +83,7 @@ export default function Home(): React.ReactElement {
             <div className="mt-10 max-w-2xl rounded-[22px] border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_0_#111] sm:p-7">
               <p className="text-lg font-medium leading-8 text-ink sm:text-xl sm:leading-9">
                 Watchman buys short-duration <strong className="font-bold">Down Event Contracts</strong>{" "}
-                on DreamDEX to offset a defined amount of downside on your BTC or ETH position — then
+                on DreamDEX to offset a defined amount of downside on your BTC or ETH position, then
                 shows you exactly what the hedge did.
               </p>
             </div>
@@ -105,7 +105,7 @@ export default function Home(): React.ReactElement {
             </div>
 
             <p className="mt-5 text-sm font-bold text-ink/70">
-              No wallet or funding needed — demo mode runs the whole pipeline in simulation.
+              No wallet or funding needed. Demo mode runs the whole pipeline in simulation.
             </p>
 
             {/* Three fact tiles, offset for poster rhythm. */}
@@ -183,7 +183,7 @@ export default function Home(): React.ReactElement {
               <div className="mt-6 rounded-[22px] border-[3px] border-ink bg-ink p-8 text-paper shadow-[6px_6px_0_0_#111] sm:p-12">
                 <p className="text-2xl font-bold leading-9 tracking-tight sm:text-[2rem] sm:leading-[1.35]">
                   DreamDEX already lists short-duration binary Event Contracts that could hedge
-                  this. They&apos;re a raw trading primitive — someone still has to find the right
+                  this. They&apos;re a raw trading primitive, and someone still has to find the right
                   market, size it against real exposure, and execute before the window closes.
                   <span className="text-yellow"> Watchman is that missing layer.</span>
                 </p>
@@ -267,11 +267,11 @@ export default function Home(): React.ReactElement {
                 </p>
                 <ul className="mt-8 space-y-3">
                   {[
-                    "Asset — BTC or ETH",
-                    "Exposure — the position you're carrying",
-                    "Protection — how much downside to cover",
-                    "Window — next 15 minutes or hour",
-                    "Max premium — your hard cost ceiling",
+                    "Asset: BTC or ETH",
+                    "Exposure: the position you're carrying",
+                    "Protection: how much downside to cover",
+                    "Window: next 15 minutes or hour",
+                    "Max premium: your hard cost ceiling",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-3 text-base font-medium">
                       <span
@@ -378,7 +378,7 @@ export default function Home(): React.ReactElement {
                 </div>
               </Reveal>
 
-              {/* Receipt object — illustrative sample; live values render on /receipt/[id]. */}
+              {/* Receipt object: illustrative sample; live values render on /receipt/[id]. */}
               <Reveal delay={120}>
                 <div className="rounded-[22px] border-[3px] border-ink bg-paper p-7 text-ink shadow-[10px_10px_0_0_#ff5fd0] sm:p-9">
                   <div className="flex items-start justify-between gap-4">
@@ -438,14 +438,14 @@ export default function Home(): React.ReactElement {
                     <p className="wm-numeral mt-2 text-4xl font-bold">{signedMoney(SHOWCASE_BASIS)}</p>
                     <p className="mt-2 text-sm font-medium leading-6">
                       The binary paid {money(SHOWCASE_RESULT.hedgePayoutUsd)} against a{" "}
-                      {money(Math.abs(SHOWCASE_RESULT.unhedgedPnlUsd))} loss. It <em>overshot</em> — a
+                      {money(Math.abs(SHOWCASE_RESULT.unhedgedPnlUsd))} loss. It <em>overshot</em>, because a
                       binary pays its full face value or nothing, so it rarely equals your actual
                       loss. That gap is the number a put wouldn&apos;t have.
                     </p>
                   </div>
 
                   <p className="mt-6 text-xs leading-5 text-ink-mute">
-                    Worked example at a {(SHOWCASE_DOWN_PRICE * 100).toFixed(0)}¢ Down price — every
+                    Worked example at a {(SHOWCASE_DOWN_PRICE * 100).toFixed(0)}¢ Down price, and every
                     figure above is computed by the same <code>quoteHedge</code> and{" "}
                     <code>calculateEffectiveness</code> functions the product runs, so this page
                     cannot show a number Watchman would not actually produce. Live receipts render

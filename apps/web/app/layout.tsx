@@ -17,7 +17,7 @@ const mono = JetBrains_Mono({
   weight: ["400", "500", "700"],
 });
 
-const title = "Watchman — Keep the position. Protect the downside.";
+const title = "Watchman: Keep the position. Protect the downside.";
 const description =
   "Watchman buys short-duration Down Event Contracts on DreamDEX to offset a defined amount of downside on a crypto position, then shows exactly what the hedge did.";
 
@@ -38,7 +38,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: { default: title, template: "%s — Watchman" },
+  title: { default: title, template: "%s | Watchman" },
   description,
   applicationName: "Watchman",
   keywords: [

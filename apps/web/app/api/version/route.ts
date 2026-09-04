@@ -14,7 +14,7 @@ import { SHOWCASE_DOWN_PRICE, SHOWCASE_INPUT, SHOWCASE_QUOTE } from "../../compo
  *
  * The `derivation` and `checks` blocks exist because the corrected scenario and
  * the old impossible one share three of their four figures (38¢ / 5,000
- * contracts / $5,000 max payout) and differ only in premium — $1,900 (correct,
+ * contracts / $5,000 max payout) and differ only in premium: $1,900 (correct,
  * 5,000 × 0.38) versus $150 (impossible, implies a 3¢ price). Publishing the
  * arithmetic means nobody has to do that multiplication in their head to tell
  * the two apart.
@@ -39,7 +39,7 @@ export function GET(): NextResponse {
     commit: COMMIT_SHA_FULL,
     environment: DEPLOY_ENV,
     builtAt: BUILT_AT,
-    // Engine-derived — not hand-written constants. These are the same values
+    // Engine-derived, not hand-written constants. These are the same values
     // the homepage renders; both import apps/web/app/components/scenario.ts.
     showcase: {
       source: "apps/web/app/components/scenario.ts → @watchman/sdk quoteHedge()",

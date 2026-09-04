@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   // that ship raw TypeScript source (package.json "main"/"exports" point
   // straight at src/index.ts, no build step). Next externalizes
   // node_modules (including pnpm's symlinked workspace packages) by
-  // default and won't run its TS/JS loader on them unless told to — this
+  // default and won't run its TS/JS loader on them unless told to, and this
   // is what makes Next compile that source directly, so there is no
   // separate "build the workspace packages first" step for Vercel to get
   // wrong or skip.

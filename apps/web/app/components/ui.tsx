@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /* ------------------------------------------------------------------
-   Watchman primitives. Presentational only — safe in server components.
+   Watchman primitives. Presentational only, safe in server components.
    ------------------------------------------------------------------ */
 
 type Tone = "yellow" | "pink" | "blue" | "white" | "ink";
@@ -28,7 +28,7 @@ export function Tag({
   );
 }
 
-/** Section eyebrow — small pink label that opens a section, poster-style. */
+/** Section eyebrow: small pink label that opens a section, poster-style. */
 export function SectionLabel({
   children,
   tone = "pink",
@@ -119,7 +119,7 @@ export function Button({
   );
 }
 
-/** Arrow that nudges on parent hover — used inside CTAs. */
+/** Arrow that nudges on parent hover, used inside CTAs. */
 export function Arrow(): React.ReactElement {
   return (
     <svg
@@ -211,7 +211,7 @@ export function BasisNote({ className = "" }: { className?: string }): React.Rea
       className={`rounded-2xl border-[3px] border-ink bg-yellow/60 p-4 text-sm font-medium leading-6 ${className}`}
     >
       <strong className="font-bold">A hedge is not a promise.</strong> Event Contracts are binary
-      outcomes, not perfect puts. The payout can differ from the exact loss on your position —
+      outcomes, not perfect puts. The payout can differ from the exact loss on your position, and
       Watchman always shows that difference.
     </p>
   );

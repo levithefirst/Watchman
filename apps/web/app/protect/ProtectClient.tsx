@@ -5,14 +5,17 @@ import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import SiteHeader from "../components/SiteHeader";
 import SiteFooter from "../components/SiteFooter";
+import AssetSelect from "../components/AssetSelect";
+import FundingPanel from "../components/FundingPanel";
 import { Arrow, BasisNote, Button, Panel, Row, Tag } from "../components/ui";
 import { track } from "../components/analytics";
 import { money, count, pct } from "../components/format";
 
 const CHAIN_ID = 50312;
 type Asset = "BTC" | "ETH";
+const ASSETS = ["BTC", "ETH"] as const satisfies readonly Asset[];
 type WindowSeconds = 900 | 3600;
-interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; error?: string }
+interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; faucetAvailable?: boolean; reason?: "no-liquidity" | "unavailable"; error?: string }
 interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; error?: string }
 
 export default function ProtectClient(): React.ReactElement {
@@ -30,15 +33,21 @@ export default function ProtectClient(): React.ReactElement {
   const [balance, setBalance] = useState<number>();
   const [quote, setQuote] = useState<QuoteResponse["quote"]>();
   const [quoteError, setQuoteError] = useState<string>();
+  // Separates "the venue had no usable market" from "Watchman could not reach
+  // the venue". Both used to render as "No usable live quote", which made a
+  // broken transport look like an empty order book.
+  const [quoteFailureKind, setQuoteFailureKind] = useState<"no-liquidity" | "unavailable">("no-liquidity");
   const [liveExecutionAvailable, setLiveExecutionAvailable] = useState(false);
+  const [faucetAvailable, setFaucetAvailable] = useState(false);
   const [loadingQuote, setLoadingQuote] = useState(false);
   const [protecting, setProtecting] = useState(false);
   const [funding, setFunding] = useState(false);
+  const [fundingOpen, setFundingOpen] = useState(false);
   const [fundMessage, setFundMessage] = useState<string>();
   const [result, setResult] = useState<ProtectResponse>();
   const [error, setError] = useState<string>();
 
-  // The wallet a live order executes as — only meaningful once connected to
+  // The wallet a live order executes as, only meaningful once connected to
   // the right chain. On the wrong chain we still show the tile as connected
   // (so "switch network" is visible) but never pass the address to the
   // pricing/execution request.
@@ -60,15 +69,19 @@ export default function ProtectClient(): React.ReactElement {
       try {
         const response = await fetch("/api/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(requestBody) });
         const data = (await response.json()) as QuoteResponse;
-        if (!response.ok) throw new Error(data.error ?? "Quote failed");
-        setQuote(data.quote ?? undefined); setBalance(data.balance); setLiveExecutionAvailable(Boolean(data.liveExecutionAvailable));
+        if (!response.ok) { setQuoteFailureKind(data.reason ?? "unavailable"); throw new Error(data.error ?? "Quote failed"); }
+        setQuote(data.quote ?? undefined); setBalance(data.balance); setLiveExecutionAvailable(Boolean(data.liveExecutionAvailable)); setFaucetAvailable(Boolean(data.faucetAvailable));
         if (data.quote) track("quote_received", { downAsk: data.quote.downAsk, contracts: data.quote.hedge.contractsToBuy, premiumUsd: data.quote.hedge.premiumUsd });
-        if (data.error && !data.quote) setQuoteError(data.error);
+        if (data.error && !data.quote) { setQuoteFailureKind(data.reason ?? "no-liquidity"); setQuoteError(data.error); }
       } catch (cause) { setQuote(undefined); setQuoteError(cause instanceof Error ? cause.message : "Quote unavailable"); }
       finally { setLoadingQuote(false); }
     }, 350);
     return () => window.clearTimeout(timer);
   }, [requestBody, asset, exposureUsd, protectionPct, windowSeconds, maxPremiumUsd]);
+
+  // The built-in helper is disabled in production, so the button opens the
+  // funding panel instead of firing a request that can only 403.
+  const openFunding = (): void => { setFundMessage(undefined); setError(undefined); setFundingOpen(true); track("funding_help_opened"); };
 
   const fundWallet = async (): Promise<void> => {
     setFunding(true); setFundMessage(undefined); setError(undefined);
@@ -78,7 +91,8 @@ export default function ProtectClient(): React.ReactElement {
       const data = (await response.json()) as { hash?: string | null; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Faucet failed");
       setFundMessage(data.hash ? `Funded. ${data.hash.slice(0, 10)}…` : "Funded with test tUSDC.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Faucet failed"); }
+      setFundingOpen(false);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Faucet failed"); setFundingOpen(false); }
     finally { setFunding(false); }
   };
 
@@ -164,7 +178,7 @@ export default function ProtectClient(): React.ReactElement {
                 {wrongNetwork ? (
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-flame px-4 py-3.5 text-paper">
                     <p className="text-sm font-bold">
-                      Wrong network — switch your wallet to Somnia Shannon (chain 50312) to use live
+                      Wrong network. Switch your wallet to Somnia Shannon (chain 50312) to use live
                       mode.
                     </p>
                     <Button
@@ -178,27 +192,27 @@ export default function ProtectClient(): React.ReactElement {
                   </div>
                 ) : null}
 
-                {/* Execution badge — must always be unmistakable */}
+                {/* Execution badge, must always be unmistakable */}
                 <p
                   className={`mt-4 inline-flex items-center gap-2.5 rounded-full border-[3px] border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest ${willSimulate ? "bg-blue" : "bg-mint"}`}
                 >
                   <span aria-hidden="true" className={`block h-2.5 w-2.5 rounded-full ${willSimulate ? "bg-ink" : "bg-ink"}`} />
-                  {willSimulate ? "Simulated order — no funds needed" : "Live testnet execution"}
+                  {willSimulate ? "Simulated order, no funds needed" : "Live testnet execution"}
                 </p>
 
                 {/* Asset + exposure */}
                 <div className="mt-8 grid gap-5 sm:grid-cols-2">
                   <div>
-                    <label htmlFor="asset" className="wm-eyebrow text-ink-mute">Asset</label>
-                    <select
-                      id="asset"
-                      value={asset}
-                      onChange={(event) => setAsset(event.target.value as Asset)}
-                      className="wm-input wm-select mt-2.5"
-                    >
-                      <option>BTC</option>
-                      <option>ETH</option>
-                    </select>
+                    <span id="asset-label" className="wm-eyebrow text-ink-mute">Asset</span>
+                    <div className="mt-2.5">
+                      <AssetSelect
+                        id="asset"
+                        label="Asset"
+                        value={asset}
+                        options={ASSETS}
+                        onChange={setAsset}
+                      />
+                    </div>
                   </div>
                   <div>
                     <label htmlFor="exposure" className="wm-eyebrow text-ink-mute">Exposure (USD)</label>
@@ -281,8 +295,8 @@ export default function ProtectClient(): React.ReactElement {
                       tUSDC balance:{" "}
                       <span className="wm-numeral">{balance === undefined ? "checking…" : money(balance)}</span>
                     </span>
-                    <Button tone="white" size="sm" onClick={() => void fundWallet()} disabled={funding}>
-                      {funding ? "Funding…" : "Fund with tUSDC"}
+                    <Button tone="white" size="sm" onClick={openFunding}>
+                      Fund with tUSDC
                     </Button>
                   </div>
                 ) : null}
@@ -326,7 +340,7 @@ export default function ProtectClient(): React.ReactElement {
                     </div>
                     <p className="mt-2 text-sm font-medium text-ink-soft">Down price · {quote.symbol}</p>
 
-                    {/* Asked vs fillable — the number most products hide. */}
+                    {/* Asked vs fillable: the number most products hide. */}
                     <div
                       className={`mt-7 rounded-2xl border-[3px] border-ink p-5 ${quote.hedge.fullyFunded ? "bg-mint" : "bg-yellow"}`}
                     >
@@ -371,7 +385,7 @@ export default function ProtectClient(): React.ReactElement {
                     <p className="mt-4 text-xs leading-5 text-ink-soft">
                       Binary settlement: each contract pays $1.00 if BTC resolves Down over the
                       window, $0 otherwise. There is no partial payout, so this will not equal your
-                      actual loss — the receipt shows the difference.
+                      actual loss. The receipt shows the difference.
                     </p>
 
                     <Button
@@ -388,12 +402,25 @@ export default function ProtectClient(): React.ReactElement {
                   </div>
                 ) : (
                   <div className="mt-7 rounded-2xl border-[3px] border-ink bg-paper-deep p-6" aria-live="polite">
-                    <p className="text-lg font-bold">No usable live quote</p>
-                    <p className="mt-2.5 text-sm leading-6 text-ink-soft">
-                      Watchman is waiting for a currently Trading DreamDEX market with Down
-                      liquidity for this asset and window. Try the other window, or check back in a
-                      moment.
-                    </p>
+                    {quoteFailureKind === "unavailable" ? (
+                      <>
+                        <p className="text-lg font-bold">Market data unavailable</p>
+                        <p className="mt-2.5 text-sm leading-6 text-ink-soft">
+                          Watchman could not reach DreamDEX on Somnia Shannon, so it has no prices
+                          to quote from. This is a connection problem on our side, not a reading
+                          that the market is empty. Retry in a moment.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-lg font-bold">No usable live quote</p>
+                        <p className="mt-2.5 text-sm leading-6 text-ink-soft">
+                          Watchman reached DreamDEX and found no currently Trading market with Down
+                          liquidity for this asset and window. Try the other window, or check back
+                          in a moment.
+                        </p>
+                      </>
+                    )}
                     {quoteError ? (
                       <details className="mt-4 rounded-xl border-[3px] border-ink bg-white px-4 py-3">
                         <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-widest text-ink-soft">
@@ -420,7 +447,7 @@ export default function ProtectClient(): React.ReactElement {
                     <p className="wm-numeral mt-2 break-all text-xs font-bold text-ink-soft">{result.hedgeId}</p>
                     {result.simulated ? (
                       <p className="mt-3 text-sm leading-6">
-                        No on-chain order was placed — the full pipeline ran in simulation so you can
+                        No on-chain order was placed. The full pipeline ran in simulation so you can
                         see the whole flow without funding a wallet.
                       </p>
                     ) : result.txHash ? (
@@ -451,6 +478,13 @@ export default function ProtectClient(): React.ReactElement {
           </div>
         </div>
       </main>
+      {fundingOpen ? (
+        <FundingPanel
+          onClose={() => setFundingOpen(false)}
+          onDevFaucet={faucetAvailable ? () => void fundWallet() : undefined}
+          devFaucetBusy={funding}
+        />
+      ) : null}
       <SiteFooter />
     </>
   );

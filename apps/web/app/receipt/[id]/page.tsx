@@ -13,7 +13,7 @@ interface Receipt { id: string; hedgeId: string; exposureUsd: string; premiumUsd
 /**
  * Plain-English summary of the settled outcome, built from the real values.
  * Deliberately states the binary's over/undershoot rather than implying the
- * payout matched the loss — it almost never does.
+ * payout matched the loss, which it almost never does.
  */
 function summarize(receipt: Receipt): string {
   const move = num(receipt.actualMovePct);
@@ -33,7 +33,7 @@ function summarize(receipt: Receipt): string {
       : gap > 0
         ? `overshooting that loss by ${money(gap)}`
         : `covering ${money(payout)} of it and leaving ${money(-gap)} uncovered`;
-  return `${opening} The Down contract resolved true and paid its full face value of ${money(payout)}, ${shape}. A binary pays all or nothing, so it lands where it lands — the difference is the basis.`;
+  return `${opening} The Down contract resolved true and paid its full face value of ${money(payout)}, ${shape}. A binary pays all or nothing, so it lands where it lands, and the difference is the basis.`;
 }
 
 export default function ReceiptPage({ params }: { params: Promise<{ id: string }> }): React.ReactElement {

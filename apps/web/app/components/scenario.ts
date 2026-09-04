@@ -7,7 +7,7 @@ import { quoteHedge, calculateEffectiveness } from "@watchman/sdk";
  * This exists because hand-written mockup figures drifted into something
  * mathematically impossible: the page simultaneously claimed a 38¢ contract
  * price, 5,000 contracts and a $150 premium (which implies a 3¢ price), plus a
- * $5,000 payout on a $150 premium — a 33x return on a ~38% probability event.
+ * $5,000 payout on a $150 premium, a 33x return on a ~38% probability event.
  *
  * Deriving the showcase from `quoteHedge`/`calculateEffectiveness` means the
  * landing page cannot state a number the product would not actually produce.
@@ -23,7 +23,7 @@ export const SHOWCASE_INPUT = {
   protectionPct: 0.5,
   /**
    * Budget sized so this example is actually fillable. Covering $5,000 of
-   * payout at 38¢ genuinely costs ~$1,900 — that is what a binary downside
+   * payout at 38¢ genuinely costs ~$1,900, which is what a binary downside
    * event costs, and the page says so rather than implying it is cheap.
    */
   maxPremiumUsd: 2_000,

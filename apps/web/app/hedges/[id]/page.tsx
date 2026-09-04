@@ -96,7 +96,7 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
             <Stat
               label="Premium paid"
               value={money(hedge.premiumUsd)}
-              hint="Worst case — this is all you can lose on the hedge"
+              hint="Worst case: this is all you can lose on the hedge"
               tone="pink"
             />
             <Stat label="Down price" value={cents(hedge.downPrice)} />
@@ -108,7 +108,7 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
             <Stat label="Expiry" value={shortDate(hedge.expiry)} />
           </div>
 
-          {/* Proof — the verifiable on-chain trail, in one place. */}
+          {/* Proof: the verifiable on-chain trail, in one place. */}
           <section aria-labelledby="proof-title" className="mt-8">
             <div className="rounded-[22px] border-[3px] border-ink bg-white p-6 shadow-[6px_6px_0_0_#111] sm:p-7">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -118,7 +118,7 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
                 <span
                   className={`rounded-full border-[3px] border-ink px-3 py-1 text-[11px] font-bold uppercase tracking-widest ${hedge.txHash ? "bg-mint" : "bg-blue"}`}
                 >
-                  {hedge.txHash ? "Executed on Somnia" : "Simulated — no on-chain order"}
+                  {hedge.txHash ? "Executed on Somnia" : "Simulated, no on-chain order"}
                 </span>
               </div>
 
@@ -151,7 +151,7 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
                       </a>
                     ) : (
                       <span className="text-ink-soft">
-                        None — this hedge ran the full pipeline in simulation. Watchman does not
+                        None. This hedge ran the full pipeline in simulation. Watchman does not
                         invent transaction hashes.
                       </span>
                     )}
@@ -186,7 +186,7 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
                     ) : (
                       <span className="text-ink-soft">
                         {hedge.settledAt
-                          ? "Settled in simulation — nothing was redeemed on-chain"
+                          ? "Settled in simulation, nothing was redeemed on-chain"
                           : "Not yet due"}
                       </span>
                     )}
@@ -248,7 +248,7 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
                 </h2>
                 <p className="mt-3 max-w-xl text-base leading-7 text-ink-soft">
                   The settlement agent is tracking this market on-chain. Once the contract&apos;s
-                  window closes it redeems the winning side and writes the receipt — refresh this
+                  window closes it redeems the winning side and writes the receipt, so refresh this
                   page then.
                 </p>
                 <div className="mt-7 flex flex-wrap gap-3">

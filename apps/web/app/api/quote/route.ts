@@ -12,10 +12,23 @@ export async function POST(request: Request): Promise<NextResponse> {
       const quote = await cheapestDownQuote(ctx, raw.asset, raw.windowSeconds);
       const balance = raw.wallet ? await getTUSDCBalance(ctx, raw.wallet) : undefined;
       const liveExecutionAvailable = Boolean(process.env.PRIVATE_KEY);
-      if (!quote) return NextResponse.json({ quote: null, balance, liveExecutionAvailable, error: "No live Trading market with usable Down liquidity was found." });
+      // The built-in faucet helper only exists outside production and only
+      // works when the server holds a key. The UI uses this to decide whether
+      // to offer it at all instead of letting the user hit a 403.
+      const faucetAvailable = process.env.NODE_ENV !== "production" && liveExecutionAvailable;
+      // `reason: "no-liquidity"` means the venue answered and had nothing
+      // usable. That is a real market condition, not a failure, and must never
+      // be conflated with the transport being down (see the catch below).
+      if (!quote) return NextResponse.json({ quote: null, balance, liveExecutionAvailable, faucetAvailable, reason: "no-liquidity", error: "No live Trading market with usable Down liquidity was found." });
       const requestData: HedgeRequest = { exposureUsd: raw.exposureUsd, protectionPct: raw.protectionPct, maxPremiumUsd: raw.maxPremiumUsd, windowSeconds: raw.windowSeconds };
       const hedge = quoteHedge(requestData, { downPrice: quote.downAsk, contractsAvailable: quote.contractsAvailable });
-      return NextResponse.json({ quote: { ...quote, hedge }, balance, liveExecutionAvailable });
+      return NextResponse.json({ quote: { ...quote, hedge }, balance, liveExecutionAvailable, faucetAvailable });
     } finally { await ctx.exchange.close().catch(() => undefined); }
-  } catch (error) { const message = error instanceof Error ? error.message : "Unable to quote protection"; return NextResponse.json({ error: message }, { status: 500 }); }
+  } catch (error) {
+    // Anything thrown here is Watchman failing to reach the venue (chain
+    // access, indexer, RPC), not the venue reporting no liquidity. It is
+    // reported as its own kind so the page can say so plainly.
+    const message = error instanceof Error ? error.message : "Unable to quote protection";
+    return NextResponse.json({ reason: "unavailable", error: message }, { status: 502 });
+  }
 }
