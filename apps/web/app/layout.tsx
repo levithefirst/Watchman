@@ -20,8 +20,23 @@ const title = "Watchman — Keep the position. Protect the downside.";
 const description =
   "Watchman buys short-duration Down Event Contracts on DreamDEX to offset a defined amount of downside on a crypto position, then shows exactly what the hedge did.";
 
+/**
+ * Absolute base for canonical + Open Graph URLs. Vercel injects the real
+ * hostname at build time, so this follows the deployment instead of hardcoding
+ * a guessed domain (which silently produced wrong OG/canonical links).
+ * `VERCEL_PROJECT_PRODUCTION_URL` is the stable production host; `VERCEL_URL`
+ * covers preview builds; localhost is the dev fallback.
+ */
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  ? process.env.NEXT_PUBLIC_SITE_URL
+  : process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://watchman.vercel.app"),
+  metadataBase: new URL(siteUrl),
   title: { default: title, template: "%s — Watchman" },
   description,
   applicationName: "Watchman",
