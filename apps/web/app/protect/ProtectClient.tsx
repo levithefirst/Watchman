@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import SiteHeader from "../components/SiteHeader";
 import SiteFooter from "../components/SiteFooter";
 import { Arrow, BasisNote, Button, Panel, Row, Tag } from "../components/ui";
@@ -12,17 +14,19 @@ type Asset = "BTC" | "ETH";
 type WindowSeconds = 900 | 3600;
 interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; error?: string }
 interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; error?: string }
-interface EthereumProvider { request(args: { method: string; params?: readonly unknown[] }): Promise<unknown> }
-declare global { interface Window { ethereum?: EthereumProvider } }
 
 export default function ProtectClient(): React.ReactElement {
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain, isPending: switchingChain } = useSwitchChain();
+  const wrongNetwork = isConnected && chainId !== CHAIN_ID;
+
   const [mode, setMode] = useState<"demo" | "wallet">("demo");
   const [asset, setAsset] = useState<Asset>("BTC");
   const [exposureUsd, setExposureUsd] = useState(10000);
   const [protectionPct, setProtectionPct] = useState(50);
   const [windowSeconds, setWindowSeconds] = useState<WindowSeconds>(900);
   const [maxPremiumUsd, setMaxPremiumUsd] = useState(150);
-  const [wallet, setWallet] = useState<string>();
   const [balance, setBalance] = useState<number>();
   const [quote, setQuote] = useState<QuoteResponse["quote"]>();
   const [quoteError, setQuoteError] = useState<string>();
@@ -34,14 +38,20 @@ export default function ProtectClient(): React.ReactElement {
   const [result, setResult] = useState<ProtectResponse>();
   const [error, setError] = useState<string>();
 
+  // The wallet a live order executes as — only meaningful once connected to
+  // the right chain. On the wrong chain we still show the tile as connected
+  // (so "switch network" is visible) but never pass the address to the
+  // pricing/execution request.
+  const wallet = isConnected && !wrongNetwork ? address : undefined;
+
   const requestBody = useMemo(() => ({ asset, exposureUsd, protectionPct: protectionPct / 100, windowSeconds, maxPremiumUsd, wallet: wallet as `0x${string}` | undefined }), [asset, exposureUsd, protectionPct, windowSeconds, maxPremiumUsd, wallet]);
   const willSimulate = mode === "demo" || !liveExecutionAvailable;
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("watchman.wallet");
-    if (stored) { setWallet(stored); setMode("wallet"); }
+    if (isConnected) { setMode("wallet"); track("wallet_connected", { chainId }); }
     else track("demo_started", { asset: "BTC", exposureUsd: 10000 });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]);
 
   useEffect(() => {
     const timer = window.setTimeout(async () => {
@@ -59,19 +69,6 @@ export default function ProtectClient(): React.ReactElement {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [requestBody, asset, exposureUsd, protectionPct, windowSeconds, maxPremiumUsd]);
-
-  const connectWallet = async (): Promise<void> => {
-    setError(undefined);
-    try {
-      if (!window.ethereum) throw new Error("No injected wallet found. Use Demo mode or install a compatible wallet.");
-      const chain = await window.ethereum.request({ method: "eth_chainId" });
-      if (typeof chain !== "string" || Number.parseInt(chain, 16) !== CHAIN_ID) throw new Error("Switch your wallet to Somnia Shannon testnet (chain 50312).");
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      if (!Array.isArray(accounts) || typeof accounts[0] !== "string") throw new Error("Wallet connection returned no account.");
-      setWallet(accounts[0]); window.localStorage.setItem("watchman.wallet", accounts[0]); setMode("wallet");
-      track("wallet_connected", { chainId: CHAIN_ID });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to connect wallet"); }
-  };
 
   const fundWallet = async (): Promise<void> => {
     setFunding(true); setFundMessage(undefined); setError(undefined);
@@ -136,15 +133,50 @@ export default function ProtectClient(): React.ReactElement {
                   >
                     Demo mode
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void connectWallet()}
-                    aria-pressed={mode === "wallet"}
-                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "wallet" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"}`}
-                  >
-                    {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Connect wallet"}
-                  </button>
+                  <ConnectButton.Custom>
+                    {({ account, chain, openConnectModal, openAccountModal, openChainModal, mounted }) => {
+                      const ready = mounted;
+                      const connected = ready && account && chain;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!ready}
+                          onClick={() => {
+                            if (!connected) { openConnectModal(); return; }
+                            if (chain.unsupported) { openChainModal(); return; }
+                            setMode("wallet");
+                            openAccountModal();
+                          }}
+                          aria-pressed={mode === "wallet"}
+                          className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "wallet" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"} ${!ready ? "opacity-0" : ""}`}
+                        >
+                          {connected
+                            ? chain.unsupported
+                              ? "Wrong network"
+                              : `${account.address.slice(0, 6)}…${account.address.slice(-4)}`
+                            : "Connect wallet"}
+                        </button>
+                      );
+                    }}
+                  </ConnectButton.Custom>
                 </div>
+
+                {wrongNetwork ? (
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-flame px-4 py-3.5 text-paper">
+                    <p className="text-sm font-bold">
+                      Wrong network — switch your wallet to Somnia Shannon (chain 50312) to use live
+                      mode.
+                    </p>
+                    <Button
+                      tone="white"
+                      size="sm"
+                      onClick={() => switchChain({ chainId: CHAIN_ID })}
+                      disabled={switchingChain}
+                    >
+                      {switchingChain ? "Switching…" : "Switch network"}
+                    </Button>
+                  </div>
+                ) : null}
 
                 {/* Execution badge — must always be unmistakable */}
                 <p

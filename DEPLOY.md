@@ -50,11 +50,14 @@ You'll set up the database first, then each service. No coding required — just
    |---|---|
    | `DATABASE_URL` | the connection string you copied from Neon |
    | `PRIVATE_KEY` | *(leave empty for the recommended zero-funding demo setup — see note below)* |
+   | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | *(optional — see note below)* |
 
 5. Click **Deploy**. Wait ~2 minutes for the build to finish.
 6. Once it's live, open the deployment URL and confirm the landing page loads with a **"Try Demo"** button.
 
 > **About `PRIVATE_KEY` on Vercel:** leaving it unset is the recommended setup for a public demo. Judges get the full quote → hedge → receipt flow with a clear "Simulated order" badge and nothing to fund. Only set it if you specifically want visitors to place real testnet orders — see [Real execution (optional)](#real-execution-optional) below.
+>
+> **About `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`:** the **Connect wallet** button on `/protect` opens a picker (MetaMask, Rabby, Coinbase, OKX, Trust, Brave, WalletConnect, and any other browser-injected wallet). Leaving this unset still lists and connects every browser-extension wallet — only the WalletConnect QR-code/deep-link path, which is what lets most *mobile* wallet apps pair with a normal mobile browser tab, is disabled until you set it. Get a free id at [cloud.reown.com](https://cloud.reown.com) and paste it in — it's a public app identifier, not a secret.
 >
 > **Why this used to fail:** `packages/db` and `packages/sdk` are internal workspace packages. The first fix attempt made `apps/web` build them to `dist/` before its own build — correct in theory, but it only worked if Vercel actually ran that exact multi-step command, which depended on dashboard state we couldn't verify. The real fix removes that dependency entirely: `packages/db` and `packages/sdk` now ship their TypeScript **source** directly (`package.json` "main"/"exports" point at `src/index.ts`, no build step, no `dist/` at all), and `apps/web/next.config.ts` sets `transpilePackages: ["@watchman/sdk", "@watchman/db"]` plus a small webpack `resolve.extensionAlias` tweak so Next compiles that source in-place as part of the single `next build`. There is no longer a "build the workspace packages first" step to get wrong or skip.
 

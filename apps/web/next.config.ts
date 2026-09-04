@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
   // separate "build the workspace packages first" step for Vercel to get
   // wrong or skip.
   transpilePackages: ["@watchman/sdk", "@watchman/db"],
-  webpack: (config) => {
+  webpack: (config, { webpack }) => {
     // packages/sdk and packages/db use TypeScript's NodeNext convention:
     // relative imports carry an explicit ".js" extension even though the
     // actual file on disk is ".ts" (e.g. `import "./client.js"` resolving
@@ -19,6 +19,19 @@ const nextConfig: NextConfig = {
     config.resolve.extensionAlias = {
       ".js": [".ts", ".tsx", ".js"],
     };
+    // @rainbow-me/rainbowkit's wallet connectors statically import a few
+    // optional packages that only matter outside a browser tab: Coinbase's
+    // x402 payment protocol (@x402/*, an unrelated payments feature),
+    // MetaMask SDK's React Native storage backend (never used in a web
+    // build), and pino's optional pretty-printer transport (WalletConnect's
+    // logger falls back to plain JSON logging without it). None of these
+    // paths run in this app; ignoring them is RainbowKit's own documented
+    // fix for these exact "Module not found" build errors.
+    config.plugins.push(
+      new webpack.IgnorePlugin({ resourceRegExp: /^@x402\// }),
+      new webpack.IgnorePlugin({ resourceRegExp: /^@react-native-async-storage\/async-storage$/ }),
+      new webpack.IgnorePlugin({ resourceRegExp: /^pino-pretty$/ }),
+    );
     return config;
   },
 };
