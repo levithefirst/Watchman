@@ -8,7 +8,7 @@ import ErrorState from "../components/ErrorState";
 import { track } from "../components/analytics";
 import { money, protectionLabel, shortDate, untilLabel } from "../components/format";
 
-interface HedgeRow { id: string; asset: string; marketSymbol: string; protectionPct: string; exposureUsd: string; premiumUsd: string; expiry: string; status: string; txHash: string | null; receipt: { id: string } | null }
+interface HedgeRow { id: string; asset: string; marketSymbol: string; protectionPct: string; exposureUsd: string; contractsFilled: string; premiumUsd: string; expiry: string; status: string; txHash: string | null; receipt: { id: string } | null }
 
 export default function HedgesPage(): React.ReactElement {
   const [wallet, setWallet] = useState("demo");
@@ -94,7 +94,7 @@ export default function HedgesPage(): React.ReactElement {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xl font-bold tracking-tight">
-                          {hedge.asset} · {protectionLabel(hedge.protectionPct)} protection
+                          {hedge.asset} · {protectionLabel(hedge.protectionPct)} target hedge
                         </p>
                         <p className="mt-1.5 text-sm font-medium text-ink-soft">{hedge.marketSymbol}</p>
                       </div>
@@ -118,8 +118,8 @@ export default function HedgesPage(): React.ReactElement {
                         <dd className="wm-numeral mt-1.5 text-lg font-bold">{money(hedge.premiumUsd)}</dd>
                       </div>
                       <div>
-                        <dt className="wm-eyebrow text-ink-mute">Expiry</dt>
-                        <dd className="wm-numeral mt-1.5 text-lg font-bold">{shortDate(hedge.expiry)}</dd>
+                        <dt className="wm-eyebrow text-ink-mute">Max payout</dt>
+                        <dd className="wm-numeral mt-1.5 text-lg font-bold">{money(hedge.contractsFilled)}</dd>
                       </div>
                       <div>
                         <dt className="wm-eyebrow text-ink-mute">Window</dt>

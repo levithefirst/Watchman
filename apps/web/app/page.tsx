@@ -4,6 +4,15 @@ import SiteFooter from "./components/SiteFooter";
 import Reveal from "./components/Reveal";
 import { Arrow, ButtonLink, Panel, SectionLabel, Tag } from "./components/ui";
 import CtaLink from "./components/CtaLink";
+import { count, money, pct, signedMoney } from "./components/format";
+import {
+  SHOWCASE_BASIS,
+  SHOWCASE_DOWN_PRICE,
+  SHOWCASE_INPUT,
+  SHOWCASE_MOVE_PCT,
+  SHOWCASE_QUOTE,
+  SHOWCASE_RESULT,
+} from "./components/scenario";
 
 export const metadata: Metadata = {
   title: "Watchman — Keep the position. Protect the downside.",
@@ -301,16 +310,18 @@ export default function Home(): React.ReactElement {
                         Demo
                       </Tag>
                     </div>
-                    <p className="wm-numeral mt-6 text-6xl font-bold leading-none">38.0¢</p>
+                    <p className="wm-numeral mt-6 text-6xl font-bold leading-none">
+                      {(SHOWCASE_DOWN_PRICE * 100).toFixed(1)}¢
+                    </p>
                     <p className="mt-2 text-sm font-medium text-ink-soft">
                       Down price · BTC-15M
                     </p>
                     <dl className="mt-8 divide-y-[3px] divide-ink/10">
                       {[
-                        ["Contracts", "5,000"],
-                        ["Premium", "$150.00"],
-                        ["Potential payout", "$5,000.00"],
-                        ["Cost / protected", "3.00%"],
+                        ["Down contracts", count(SHOWCASE_QUOTE.contractsToBuy)],
+                        ["Premium paid", money(SHOWCASE_QUOTE.premiumUsd)],
+                        ["Max payout if it resolves Down", money(SHOWCASE_QUOTE.potentialPayoutUsd)],
+                        ["Premium / covered amount", pct(SHOWCASE_QUOTE.costPctOfProtected)],
                       ].map(([k, v]) => (
                         <div key={k} className="flex items-baseline justify-between gap-4 py-3">
                           <dt className="text-sm font-medium text-ink-soft">{k}</dt>
@@ -382,24 +393,41 @@ export default function Home(): React.ReactElement {
 
                   <div className="wm-dotline my-7" />
 
-                  <dl className="grid grid-cols-2 gap-x-6 gap-y-7">
+                  <dl className="space-y-5">
                     <div>
-                      <dt className="wm-eyebrow text-ink-mute">Position</dt>
-                      <dd className="wm-numeral mt-2 text-2xl font-bold">BTC</dd>
-                      <dd className="wm-numeral text-2xl font-bold">$10,000</dd>
+                      <dt className="wm-eyebrow text-ink-mute">What you held</dt>
+                      <dd className="wm-numeral mt-1.5 text-2xl font-bold">
+                        {money(SHOWCASE_INPUT.exposureUsd)} BTC
+                      </dd>
                     </div>
                     <div>
-                      <dt className="wm-eyebrow text-ink-mute">Protection</dt>
-                      <dd className="wm-numeral mt-2 text-2xl font-bold">50%</dd>
-                      <dd className="wm-numeral text-2xl font-bold">15 MIN</dd>
+                      <dt className="wm-eyebrow text-ink-mute">What you bought</dt>
+                      <dd className="wm-numeral mt-1.5 text-2xl font-bold">
+                        {count(SHOWCASE_QUOTE.contractsToBuy)} Down @ {(SHOWCASE_DOWN_PRICE * 100).toFixed(0)}¢
+                      </dd>
+                      <dd className="mt-1 text-sm font-bold text-ink-soft">
+                        {money(SHOWCASE_QUOTE.premiumUsd)} premium · 15 min window
+                      </dd>
                     </div>
-                    <div>
-                      <dt className="wm-eyebrow text-ink-mute">Premium</dt>
-                      <dd className="wm-numeral mt-2 text-2xl font-bold">$150.00</dd>
-                    </div>
-                    <div>
-                      <dt className="wm-eyebrow text-ink-mute">Payout</dt>
-                      <dd className="wm-numeral mt-2 text-2xl font-bold">$395.00</dd>
+                    <div className="grid grid-cols-2 gap-x-6">
+                      <div>
+                        <dt className="wm-eyebrow text-ink-mute">What happened</dt>
+                        <dd className="wm-numeral mt-1.5 text-2xl font-bold">
+                          {SHOWCASE_MOVE_PCT.toFixed(2)}%
+                        </dd>
+                        <dd className="mt-1 text-sm font-bold text-ink-soft">
+                          {signedMoney(SHOWCASE_RESULT.unhedgedPnlUsd)} unhedged
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="wm-eyebrow text-ink-mute">What it paid</dt>
+                        <dd className="wm-numeral mt-1.5 text-2xl font-bold">
+                          {money(SHOWCASE_RESULT.hedgePayoutUsd)}
+                        </dd>
+                        <dd className="mt-1 text-sm font-bold text-ink-soft">
+                          {signedMoney(SHOWCASE_RESULT.hedgedPnlUsd)} hedged
+                        </dd>
+                      </div>
                     </div>
                   </dl>
 
@@ -407,16 +435,21 @@ export default function Home(): React.ReactElement {
 
                   <div className="rounded-2xl border-[3px] border-ink bg-yellow p-5">
                     <p className="wm-eyebrow text-ink/70">Basis difference</p>
-                    <p className="wm-numeral mt-2 text-4xl font-bold">$44.00</p>
+                    <p className="wm-numeral mt-2 text-4xl font-bold">{signedMoney(SHOWCASE_BASIS)}</p>
                     <p className="mt-2 text-sm font-medium leading-6">
-                      What the hedge paid, minus the loss it was covering. Positive or negative,
-                      it&apos;s always on the receipt.
+                      The binary paid {money(SHOWCASE_RESULT.hedgePayoutUsd)} against a{" "}
+                      {money(Math.abs(SHOWCASE_RESULT.unhedgedPnlUsd))} loss. It <em>overshot</em> — a
+                      binary pays its full face value or nothing, so it rarely equals your actual
+                      loss. That gap is the number a put wouldn&apos;t have.
                     </p>
                   </div>
 
                   <p className="mt-6 text-xs leading-5 text-ink-mute">
-                    Illustrative values. Live receipts render the actual settled numbers from your
-                    hedge.
+                    Worked example at a {(SHOWCASE_DOWN_PRICE * 100).toFixed(0)}¢ Down price — every
+                    figure above is computed by the same <code>quoteHedge</code> and{" "}
+                    <code>calculateEffectiveness</code> functions the product runs, so this page
+                    cannot show a number Watchman would not actually produce. Live receipts render
+                    your hedge&apos;s real settled values.
                   </p>
                 </div>
               </Reveal>

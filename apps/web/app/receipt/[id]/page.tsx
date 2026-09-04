@@ -10,17 +10,30 @@ import { money, num, pct, signedMoney } from "../../components/format";
 
 interface Receipt { id: string; hedgeId: string; exposureUsd: string; premiumUsd: string; actualMovePct: string; unhedgedPnlUsd: string; hedgedPnlUsd: string; payoutUsd: string; netProtectionUsd: string; efficiencyPct: string; createdAt: string }
 
-/** Plain-English summary of the settled outcome, built from the real values. */
+/**
+ * Plain-English summary of the settled outcome, built from the real values.
+ * Deliberately states the binary's over/undershoot rather than implying the
+ * payout matched the loss — it almost never does.
+ */
 function summarize(receipt: Receipt): string {
   const move = num(receipt.actualMovePct);
   const payout = num(receipt.payoutUsd);
-  const netProtection = num(receipt.netProtectionUsd);
-  const direction = move < 0 ? "dropped" : move > 0 ? "rose" : "was flat";
-  const payoutClause =
-    payout > 0
-      ? `the hedge paid out ${money(receipt.payoutUsd)}, offsetting ${netProtection >= 0 ? "" : "part of "}the loss by ${money(receipt.netProtectionUsd)} net of premium`
-      : `the hedge paid out $0 — the event resolved in the position's favour, so the only cost was the ${money(receipt.premiumUsd)} premium`;
-  return `The underlying ${direction} ${Math.abs(move).toFixed(2)}% over the protection window. As a result, ${payoutClause}.`;
+  const premium = num(receipt.premiumUsd);
+  const loss = Math.max(0, -num(receipt.unhedgedPnlUsd));
+  const direction = move < 0 ? "fell" : move > 0 ? "rose" : "was flat";
+  const opening = `The underlying ${direction} ${Math.abs(move).toFixed(2)}% over the window, a ${money(loss)} loss on the position.`;
+
+  if (payout <= 0) {
+    return `${opening} The Down contract did not resolve in your favour, so it paid nothing and the hedge cost you its ${money(premium)} premium.`;
+  }
+  const gap = payout - loss;
+  const shape =
+    Math.abs(gap) < 0.01
+      ? "almost exactly matching that loss"
+      : gap > 0
+        ? `overshooting that loss by ${money(gap)}`
+        : `covering ${money(payout)} of it and leaving ${money(-gap)} uncovered`;
+  return `${opening} The Down contract resolved true and paid its full face value of ${money(payout)}, ${shape}. A binary pays all or nothing, so it lands where it lands — the difference is the basis.`;
 }
 
 export default function ReceiptPage({ params }: { params: Promise<{ id: string }> }): React.ReactElement {

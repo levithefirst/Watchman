@@ -15,7 +15,7 @@ Watchman — Short-Duration Portfolio Insurance on DreamDEX
 (1-2 sentences, for the card/summary field)
 
 ```
-Watchman turns DreamDEX binary Event Contracts into short-duration portfolio insurance: tell it an exposure and a protection percentage, and it quotes, sizes, executes, settles, and redeems the hedge for you — then hands back a receipt showing exactly what it did.
+Watchman is the risk-management layer for DreamDEX Event Contracts: give it an exposure, a protection target and a premium budget, and it finds the cheapest tradeable Down contract, sizes the hedge against real liquidity, executes, settles, redeems, and hands back a receipt showing exactly what the hedge did — including the basis difference between the binary payout and your actual loss.
 ```
 
 ## Long description
@@ -91,11 +91,11 @@ https://web-mauve-beta-27.vercel.app
 ## Demo video link
 
 ```
-<PASTE YOUR DEMO VIDEO URL HERE — see DEMO_SCRIPT.md for the recording script>
+ACTION REQUIRED — record with DEMO_SCRIPT.md, then paste the URL here before submitting.
 ```
 
 ## Repository
 
 ```
-<PASTE YOUR GITHUB REPO URL HERE>
+https://github.com/levithefirst/Watchman
 ```

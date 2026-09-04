@@ -1,6 +1,8 @@
 # Watchman
 
-**Turn DreamDEX Event Contracts into short-duration portfolio insurance — no options desk, no liquidation risk, no selling the position.**
+**Watchman is the risk-management layer for DreamDEX Event Contracts. Keep the position, buy the downside event, and see exactly what the hedge actually did.**
+
+> A binary Event Contract is not a put. It pays its full face value or nothing, so it will rarely equal your actual loss. Watchman sizes that trade against a real premium budget and live liquidity, then puts the gap — the basis difference — on the receipt instead of hiding it.
 
 ## Problem → Solution
 

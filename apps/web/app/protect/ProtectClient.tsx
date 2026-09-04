@@ -201,7 +201,10 @@ export default function ProtectClient(): React.ReactElement {
                     aria-describedby="protection-help"
                   />
                   <p id="protection-help" className="mt-3 text-sm font-medium text-ink-soft">
-                    Covering <strong className="wm-tabular font-bold text-ink">{money(protectedUsd)}</strong> of your {money(exposureUsd)} position.
+                    Target: a hedge that can pay out{" "}
+                    <strong className="wm-tabular font-bold text-ink">{money(protectedUsd)}</strong> against
+                    your {money(exposureUsd)} position. What the market can actually fill is shown in
+                    the quote.
                   </p>
                 </div>
 
@@ -291,18 +294,53 @@ export default function ProtectClient(): React.ReactElement {
                     </div>
                     <p className="mt-2 text-sm font-medium text-ink-soft">Down price · {quote.symbol}</p>
 
-                    <dl className="mt-7 divide-y-[3px] divide-paper-deep">
-                      <Row label="Contracts" value={count(quote.hedge.contractsToBuy)} />
-                      <Row label="Premium" value={money(quote.hedge.premiumUsd)} />
-                      <Row label="Potential payout" value={money(quote.hedge.potentialPayoutUsd)} />
-                      <Row label="Cost / protected" value={pct(quote.hedge.costPctOfProtected)} />
+                    {/* Asked vs fillable — the number most products hide. */}
+                    <div
+                      className={`mt-7 rounded-2xl border-[3px] border-ink p-5 ${quote.hedge.fullyFunded ? "bg-mint" : "bg-yellow"}`}
+                    >
+                      <p className="wm-eyebrow text-ink/70">
+                        {quote.hedge.fullyFunded ? "Fully fillable" : "Market can only partly fill this"}
+                      </p>
+                      <p className="wm-numeral mt-2 text-3xl font-bold leading-none">
+                        {money(quote.hedge.potentialPayoutUsd)}{" "}
+                        <span className="text-lg text-ink-soft">
+                          of {money(quote.hedge.protectedAmountUsd)} asked
+                        </span>
+                      </p>
+                      <div
+                        className="mt-3 h-3 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white"
+                        role="img"
+                        aria-label={`${((quote.hedge.contractsToBuy / Math.max(1, quote.hedge.contractsNeeded)) * 100).toFixed(0)} percent of requested cover is fillable`}
+                      >
+                        <div
+                          className="h-full bg-ink"
+                          style={{
+                            width: `${Math.min(100, (quote.hedge.contractsToBuy / Math.max(1, quote.hedge.contractsNeeded)) * 100).toFixed(1)}%`,
+                          }}
+                        />
+                      </div>
+                      {!quote.hedge.fullyFunded ? (
+                        <p className="mt-3 text-sm font-bold leading-6">{quote.hedge.reason}</p>
+                      ) : null}
+                    </div>
+
+                    <dl className="mt-6 divide-y-[3px] divide-paper-deep">
+                      <Row label="Down contracts" value={count(quote.hedge.contractsToBuy)} />
+                      <Row label="Premium you pay" value={money(quote.hedge.premiumUsd)} strong />
+                      <Row
+                        label="Max payout if it resolves Down"
+                        value={money(quote.hedge.potentialPayoutUsd)}
+                        strong
+                      />
+                      <Row label="Premium / covered amount" value={pct(quote.hedge.costPctOfProtected)} />
+                      <Row label="Worst case" value={`−${money(quote.hedge.premiumUsd)}`} />
                     </dl>
 
-                    {!quote.hedge.fullyFunded ? (
-                      <p className="mt-5 rounded-xl border-[3px] border-ink bg-yellow px-4 py-3 text-sm font-bold leading-6">
-                        {quote.hedge.reason}
-                      </p>
-                    ) : null}
+                    <p className="mt-4 text-xs leading-5 text-ink-soft">
+                      Binary settlement: each contract pays $1.00 if BTC resolves Down over the
+                      window, $0 otherwise. There is no partial payout, so this will not equal your
+                      actual loss — the receipt shows the difference.
+                    </p>
 
                     <Button
                       tone="yellow"
