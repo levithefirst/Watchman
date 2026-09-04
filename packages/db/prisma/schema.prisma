@@ -66,6 +66,7 @@ model Hedge {
   premiumUsd         Decimal     @db.Decimal(30, 10)
   downPrice          Decimal     @db.Decimal(20, 10)
   txHash             String?
+  redeemTxHash       String?
   expiry             DateTime
   status             HedgeStatus @default(OPEN)
   createdAt          DateTime    @default(now())

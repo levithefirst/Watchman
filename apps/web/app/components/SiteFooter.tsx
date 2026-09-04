@@ -1,3 +1,5 @@
+import { COMMIT_SHA, DEPLOY_ENV } from "./build-info";
+
 export default function SiteFooter(): React.ReactElement {
   return (
     <footer className="border-t-[3px] border-ink bg-ink text-paper">
@@ -65,6 +67,12 @@ export default function SiteFooter(): React.ReactElement {
             Testnet software for demonstration. Event Contracts are binary outcomes, not perfect
             puts — a hedge can pay out differently from the loss on the underlying position. Nothing
             here is financial advice.
+          </p>
+          <p className="wm-numeral mt-4 text-[11px] text-paper/40">
+            build {COMMIT_SHA} · {DEPLOY_ENV} ·{" "}
+            <a href="/api/version" className="underline decoration-paper/30 hover:text-yellow">
+              /api/version
+            </a>
           </p>
         </div>
       </div>

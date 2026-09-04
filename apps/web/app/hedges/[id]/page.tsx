@@ -7,7 +7,7 @@ import { Arrow, ButtonLink, Panel, Stat, StatusPill, Tag } from "../../component
 import ErrorState from "../../components/ErrorState";
 import { cents, count, money, protectionLabel, pct, shortDate, signedMoney } from "../../components/format";
 
-interface Hedge { id: string; asset: string; marketId: string; marketSymbol: string; protectionPct: string; exposureUsd: string; protectedUsd: string; contractsRequested: string; contractsFilled: string; premiumUsd: string; downPrice: string; windowSeconds: number; expiry: string; status: string; txHash: string | null; createdAt: string; settledAt: string | null; redeemedAt: string | null; receipt: Receipt | null }
+interface Hedge { id: string; asset: string; marketId: string; marketSymbol: string; protectionPct: string; exposureUsd: string; protectedUsd: string; contractsRequested: string; contractsFilled: string; premiumUsd: string; downPrice: string; windowSeconds: number; expiry: string; status: string; txHash: string | null; redeemTxHash: string | null; createdAt: string; settledAt: string | null; redeemedAt: string | null; receipt: Receipt | null }
 interface Receipt { id: string; actualMovePct: string; unhedgedPnlUsd: string; hedgedPnlUsd: string; payoutUsd: string; netProtectionUsd: string; efficiencyPct: string }
 
 export default function HedgeDetailPage({ params }: { params: Promise<{ id: string }> }): React.ReactElement {
@@ -174,11 +174,20 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
                     Redemption
                   </dt>
                   <dd className="mt-1 text-sm font-bold">
-                    {hedge.redeemedAt ? (
-                      <>Winning side redeemed · {shortDate(hedge.redeemedAt)}</>
+                    {hedge.redeemTxHash ? (
+                      <a
+                        className="wm-numeral break-all underline decoration-[3px] underline-offset-4"
+                        href={`https://shannon-explorer.somnia.network/tx/${hedge.redeemTxHash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {hedge.redeemTxHash} ↗
+                      </a>
                     ) : (
                       <span className="text-ink-soft">
-                        {hedge.settledAt ? "Simulated settlement — nothing redeemed on-chain" : "Not yet due"}
+                        {hedge.settledAt
+                          ? "Settled in simulation — nothing was redeemed on-chain"
+                          : "Not yet due"}
                       </span>
                     )}
                   </dd>

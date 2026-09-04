@@ -21,6 +21,7 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany<{ in
     const settlementFees = await ctx.exchange.client.getMarketFees(hedge.marketId);
     const feeBps = BigInt(settlementFees?.settlementFeeBps ?? 0);
     let payoutUsd = 0;
+    let redeemTxHash: string | undefined;
     if (process.env.PRIVATE_KEY && ctx.walletAddress) {
       const heldYes = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: state.outcomeToken, account: ctx.walletAddress, id: state.yesId });
       const heldNo = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: state.outcomeToken, account: ctx.walletAddress, id: state.noId });
@@ -28,14 +29,14 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany<{ in
       if (state.isVoided) { if (heldYes > 0n) claimable.push({ outcome: 0, amount: heldYes }); if (heldNo > 0n) claimable.push({ outcome: 1, amount: heldNo }); }
       else if (state.winningOutcome === 1 && heldNo > 0n) claimable.push({ outcome: 1, amount: heldNo });
       else if (state.winningOutcome === 0 && heldYes > 0n) claimable.push({ outcome: 0, amount: heldYes });
-      for (const position of claimable) { payoutUsd += payoutFor(position.amount, state.decimals || COLLATERAL_DECIMALS, state, feeBps); await redeem(ctx, hedge.marketId as `0x${string}`, position.outcome, position.amount); }
+      for (const position of claimable) { payoutUsd += payoutFor(position.amount, state.decimals || COLLATERAL_DECIMALS, state, feeBps); const hash = await redeem(ctx, hedge.marketId as `0x${string}`, position.outcome, position.amount); if (hash) redeemTxHash = hash; }
     } else payoutUsd = state.isVoided ? Number(hedge.contractsFilled) / 2 : state.winningOutcome === 1 ? Number(hedge.contractsFilled) * Math.max(0, 1 - Number(feeBps) / 10_000) : 0;
     const effectiveness = calculateEffectiveness({ exposureUsd: Number(hedge.exposureUsd), premiumUsd: Number(hedge.premiumUsd), actualMovePct, payoutUsd });
     await db.$transaction([
       db.receipt.upsert({ where: { hedgeId: hedge.id }, update: {}, create: { hedgeId: hedge.id, exposureUsd: effectiveness.exposureUsd, premiumUsd: effectiveness.premiumUsd, actualMovePct: effectiveness.actualMovePct, unhedgedPnlUsd: effectiveness.unhedgedPnlUsd, hedgedPnlUsd: effectiveness.hedgedPnlUsd, payoutUsd: effectiveness.hedgePayoutUsd, netProtectionUsd: effectiveness.netProtectionUsd, efficiencyPct: effectiveness.efficiencyPct } }),
-      db.hedge.update({ where: { id: hedge.id }, data: { status: "REDEEMED", settledAt: new Date(), redeemedAt: process.env.PRIVATE_KEY ? new Date() : null } }),
+      db.hedge.update({ where: { id: hedge.id }, data: { status: "REDEEMED", settledAt: new Date(), redeemedAt: redeemTxHash ? new Date() : null, redeemTxHash: redeemTxHash ?? null } }),
     ]);
-    console.log(JSON.stringify({ event: "hedge_settled", hedgeId: hedge.id, marketId: hedge.marketId, payoutUsd, actualMovePct, efficiencyPct: effectiveness.efficiencyPct }));
+    console.log(JSON.stringify({ event: "hedge_settled", hedgeId: hedge.id, marketId: hedge.marketId, payoutUsd, actualMovePct, efficiencyPct: effectiveness.efficiencyPct, redeemTxHash: redeemTxHash ?? null }));
   } finally { await ctx.exchange.close().catch(() => undefined); }
 }
 
