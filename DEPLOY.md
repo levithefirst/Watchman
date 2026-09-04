@@ -1,5 +1,12 @@
 # Deploying Watchman (zero to live in under 10 minutes)
 
+> **Current production deployment:** https://web-mauve-beta-27.vercel.app
+>
+> The Vercel project is already linked to `levithefirst/Watchman` and auto-deploys
+> from `main` (Vercel records the URL in the GitHub repo's homepage field). The
+> steps below are for provisioning a *new* environment from scratch; if you are
+> just shipping changes, pushing to `main` is all that is required.
+
 Watchman is two services sharing one database:
 
 - **apps/web** (Vercel) — the website judges use.
