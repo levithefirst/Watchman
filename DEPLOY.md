@@ -1,6 +1,6 @@
 # Deploying Watchman (zero to live in under 10 minutes)
 
-> **Current production deployment:** https://web-mauve-beta-27.vercel.app
+> **Current production deployment:** https://watchman-beta.vercel.app
 >
 > The Vercel project is already linked to `levithefirst/Watchman` and auto-deploys
 > from `main` (Vercel records the URL in the GitHub repo's homepage field). The

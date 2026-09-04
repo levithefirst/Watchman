@@ -15,7 +15,7 @@ const CHAIN_ID = 50312;
 type Asset = "BTC" | "ETH";
 const ASSETS = ["BTC", "ETH"] as const satisfies readonly Asset[];
 type WindowSeconds = 900 | 3600;
-interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; faucetAvailable?: boolean; reason?: "no-liquidity" | "unavailable"; error?: string }
+interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fillablePct: number; limitedBy: "none" | "budget" | "liquidity"; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; faucetAvailable?: boolean; reason?: "no-liquidity" | "unavailable"; error?: string }
 interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; error?: string }
 
 export default function ProtectClient(): React.ReactElement {
@@ -340,35 +340,64 @@ export default function ProtectClient(): React.ReactElement {
                     </div>
                     <p className="mt-2 text-sm font-medium text-ink-soft">Down price · {quote.symbol}</p>
 
-                    {/* Asked vs fillable: the number most products hide. */}
-                    <div
-                      className={`mt-7 rounded-2xl border-[3px] border-ink p-5 ${quote.hedge.fullyFunded ? "bg-mint" : "bg-yellow"}`}
+                    {/* Protection capacity: what you asked for against what
+                        this market can actually give you, before you commit. */}
+                    <section
+                      aria-labelledby="capacity-title"
+                      className={`mt-7 rounded-2xl border-[3px] border-ink p-5 ${
+                        quote.hedge.contractsToBuy <= 0
+                          ? "bg-flame text-paper"
+                          : quote.hedge.fullyFunded
+                            ? "bg-mint"
+                            : "bg-yellow"
+                      }`}
                     >
-                      <p className="wm-eyebrow text-ink/70">
-                        {quote.hedge.fullyFunded ? "Fully fillable" : "Market can only partly fill this"}
+                      <p id="capacity-title" className="wm-eyebrow opacity-80">
+                        Protection capacity
                       </p>
-                      <p className="wm-numeral mt-2 text-3xl font-bold leading-none">
-                        {money(quote.hedge.potentialPayoutUsd)}{" "}
-                        <span className="text-lg text-ink-soft">
-                          of {money(quote.hedge.protectedAmountUsd)} asked
-                        </span>
-                      </p>
+
+                      <dl className="mt-3 space-y-2">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <dt className="text-sm font-bold">Requested protection</dt>
+                          <dd className="wm-numeral text-lg font-bold">
+                            {money(quote.hedge.protectedAmountUsd)}
+                          </dd>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-3">
+                          <dt className="text-sm font-bold">Currently obtainable</dt>
+                          <dd className="wm-numeral text-2xl font-bold">
+                            {money(quote.hedge.potentialPayoutUsd)}
+                          </dd>
+                        </div>
+                      </dl>
+
                       <div
                         className="mt-3 h-3 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white"
                         role="img"
-                        aria-label={`${((quote.hedge.contractsToBuy / Math.max(1, quote.hedge.contractsNeeded)) * 100).toFixed(0)} percent of requested cover is fillable`}
+                        aria-label={`${quote.hedge.fillablePct.toFixed(0)} percent of the requested protection is obtainable right now`}
                       >
                         <div
                           className="h-full bg-ink"
-                          style={{
-                            width: `${Math.min(100, (quote.hedge.contractsToBuy / Math.max(1, quote.hedge.contractsNeeded)) * 100).toFixed(1)}%`,
-                          }}
+                          style={{ width: `${quote.hedge.fillablePct.toFixed(1)}%` }}
                         />
                       </div>
+                      <p className="wm-numeral mt-2 text-sm font-bold">
+                        Fillable: {quote.hedge.fillablePct.toFixed(quote.hedge.fillablePct < 10 ? 1 : 0)}%
+                        {quote.hedge.contractsToBuy > 0 ? (
+                          <span className="font-medium opacity-80">
+                            {" "}
+                            · costs {money(quote.hedge.premiumUsd)}
+                          </span>
+                        ) : null}
+                      </p>
+
                       {!quote.hedge.fullyFunded ? (
-                        <p className="mt-3 text-sm font-bold leading-6">{quote.hedge.reason}</p>
+                        <p className="mt-3 text-sm font-bold leading-6">
+                          {quote.hedge.limitedBy === "budget" ? "Budget-limited. " : "Liquidity-limited. "}
+                          {quote.hedge.reason}
+                        </p>
                       ) : null}
-                    </div>
+                    </section>
 
                     <dl className="mt-6 divide-y-[3px] divide-paper-deep">
                       <Row label="Down contracts" value={count(quote.hedge.contractsToBuy)} />
@@ -378,7 +407,7 @@ export default function ProtectClient(): React.ReactElement {
                         value={money(quote.hedge.potentialPayoutUsd)}
                         strong
                       />
-                      <Row label="Premium / covered amount" value={pct(quote.hedge.costPctOfProtected)} />
+                      <Row label="Premium / obtainable protection" value={pct(quote.hedge.costPctOfProtected)} />
                       <Row label="Worst case" value={`−${money(quote.hedge.premiumUsd)}`} />
                     </dl>
 

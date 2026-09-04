@@ -8,7 +8,7 @@ import ErrorState from "../../components/ErrorState";
 import { cents, count, money, protectionLabel, pct, shortDate, signedMoney } from "../../components/format";
 
 interface Hedge { id: string; asset: string; marketId: string; marketSymbol: string; protectionPct: string; exposureUsd: string; protectedUsd: string; contractsRequested: string; contractsFilled: string; premiumUsd: string; downPrice: string; windowSeconds: number; expiry: string; status: string; txHash: string | null; redeemTxHash: string | null; createdAt: string; settledAt: string | null; redeemedAt: string | null; receipt: Receipt | null }
-interface Receipt { id: string; actualMovePct: string; unhedgedPnlUsd: string; hedgedPnlUsd: string; payoutUsd: string; netProtectionUsd: string; efficiencyPct: string }
+interface Receipt { id: string; actualMovePct: string; unhedgedPnlUsd: string; hedgedPnlUsd: string; payoutUsd: string; grossLossOffsetUsd: string; lossOffsetPct: string; netHedgeContributionUsd: string; overshootUsd: string }
 
 export default function HedgeDetailPage({ params }: { params: Promise<{ id: string }> }): React.ReactElement {
   const [hedge, setHedge] = useState<Hedge>();
@@ -228,9 +228,12 @@ export default function HedgeDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
 
                 <div className="mt-4 rounded-2xl border-[3px] border-ink bg-yellow p-6 text-ink">
-                  <p className="wm-eyebrow text-ink/70">Net protection</p>
-                  <p className="wm-numeral mt-2 text-4xl font-bold sm:text-5xl">{money(receipt.netProtectionUsd)}</p>
-                  <p className="mt-2 text-sm font-bold">Efficiency {pct(receipt.efficiencyPct)}</p>
+                  <p className="wm-eyebrow text-ink/70">Loss offset</p>
+                  <p className="wm-numeral mt-2 text-4xl font-bold sm:text-5xl">{pct(receipt.lossOffsetPct)}</p>
+                  <p className="mt-2 text-sm font-bold">
+                    {money(receipt.grossLossOffsetUsd)} of the loss covered · net hedge contribution{" "}
+                    {signedMoney(receipt.netHedgeContributionUsd)}
+                  </p>
                 </div>
 
                 <div className="mt-7">

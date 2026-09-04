@@ -6,7 +6,7 @@ import { Arrow, ButtonLink, Panel, SectionLabel, Tag } from "./components/ui";
 import CtaLink from "./components/CtaLink";
 import { count, money, pct, signedMoney } from "./components/format";
 import {
-  SHOWCASE_BASIS,
+  SHOWCASE_OVERSHOOT,
   SHOWCASE_DOWN_PRICE,
   SHOWCASE_INPUT,
   SHOWCASE_MOVE_PCT,
@@ -434,8 +434,8 @@ export default function Home(): React.ReactElement {
                   <div className="wm-dotline my-7" />
 
                   <div className="rounded-2xl border-[3px] border-ink bg-yellow p-5">
-                    <p className="wm-eyebrow text-ink/70">Basis difference</p>
-                    <p className="wm-numeral mt-2 text-4xl font-bold">{signedMoney(SHOWCASE_BASIS)}</p>
+                    <p className="wm-eyebrow text-ink/70">Overshoot</p>
+                    <p className="wm-numeral mt-2 text-4xl font-bold">{signedMoney(SHOWCASE_OVERSHOOT)}</p>
                     <p className="mt-2 text-sm font-medium leading-6">
                       The binary paid {money(SHOWCASE_RESULT.hedgePayoutUsd)} against a{" "}
                       {money(Math.abs(SHOWCASE_RESULT.unhedgedPnlUsd))} loss. It <em>overshot</em>, because a

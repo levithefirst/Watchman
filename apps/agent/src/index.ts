@@ -33,10 +33,10 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany<{ in
     } else payoutUsd = state.isVoided ? Number(hedge.contractsFilled) / 2 : state.winningOutcome === 1 ? Number(hedge.contractsFilled) * Math.max(0, 1 - Number(feeBps) / 10_000) : 0;
     const effectiveness = calculateEffectiveness({ exposureUsd: Number(hedge.exposureUsd), premiumUsd: Number(hedge.premiumUsd), actualMovePct, payoutUsd });
     await db.$transaction([
-      db.receipt.upsert({ where: { hedgeId: hedge.id }, update: {}, create: { hedgeId: hedge.id, exposureUsd: effectiveness.exposureUsd, premiumUsd: effectiveness.premiumUsd, actualMovePct: effectiveness.actualMovePct, unhedgedPnlUsd: effectiveness.unhedgedPnlUsd, hedgedPnlUsd: effectiveness.hedgedPnlUsd, payoutUsd: effectiveness.hedgePayoutUsd, netProtectionUsd: effectiveness.netProtectionUsd, efficiencyPct: effectiveness.efficiencyPct } }),
+      db.receipt.upsert({ where: { hedgeId: hedge.id }, update: {}, create: { hedgeId: hedge.id, exposureUsd: effectiveness.exposureUsd, premiumUsd: effectiveness.premiumUsd, actualMovePct: effectiveness.actualMovePct, unhedgedPnlUsd: effectiveness.unhedgedPnlUsd, hedgedPnlUsd: effectiveness.hedgedPnlUsd, payoutUsd: effectiveness.hedgePayoutUsd, grossLossOffsetUsd: effectiveness.grossLossOffsetUsd, lossOffsetPct: effectiveness.lossOffsetPct, netHedgeContributionUsd: effectiveness.netHedgeContributionUsd, overshootUsd: effectiveness.overshootUsd } }),
       db.hedge.update({ where: { id: hedge.id }, data: { status: "REDEEMED", settledAt: new Date(), redeemedAt: redeemTxHash ? new Date() : null, redeemTxHash: redeemTxHash ?? null } }),
     ]);
-    console.log(JSON.stringify({ event: "hedge_settled", hedgeId: hedge.id, marketId: hedge.marketId, payoutUsd, actualMovePct, efficiencyPct: effectiveness.efficiencyPct, redeemTxHash: redeemTxHash ?? null }));
+    console.log(JSON.stringify({ event: "hedge_settled", hedgeId: hedge.id, marketId: hedge.marketId, payoutUsd, actualMovePct, lossOffsetPct: effectiveness.lossOffsetPct, netHedgeContributionUsd: effectiveness.netHedgeContributionUsd, redeemTxHash: redeemTxHash ?? null }));
   } finally { await ctx.exchange.close().catch(() => undefined); }
 }
 

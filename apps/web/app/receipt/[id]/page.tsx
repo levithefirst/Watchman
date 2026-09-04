@@ -8,7 +8,7 @@ import ErrorState from "../../components/ErrorState";
 import { track } from "../../components/analytics";
 import { money, num, pct, signedMoney } from "../../components/format";
 
-interface Receipt { id: string; hedgeId: string; exposureUsd: string; premiumUsd: string; actualMovePct: string; unhedgedPnlUsd: string; hedgedPnlUsd: string; payoutUsd: string; netProtectionUsd: string; efficiencyPct: string; createdAt: string }
+interface Receipt { id: string; hedgeId: string; exposureUsd: string; premiumUsd: string; actualMovePct: string; unhedgedPnlUsd: string; hedgedPnlUsd: string; payoutUsd: string; grossLossOffsetUsd: string; lossOffsetPct: string; netHedgeContributionUsd: string; overshootUsd: string; createdAt: string }
 
 /**
  * Plain-English summary of the settled outcome, built from the real values.
@@ -89,9 +89,8 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
     );
   }
 
-  // Basis difference: what the binary contract actually paid, versus the loss it was covering.
-  const downsideLoss = Math.max(0, -num(receipt.unhedgedPnlUsd));
-  const basisDifference = num(receipt.payoutUsd) - downsideLoss;
+  const overshoot = num(receipt.overshootUsd);
+  const netContribution = num(receipt.netHedgeContributionUsd);
 
   return (
     <>
@@ -132,54 +131,79 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
 
             <div className="wm-dotline my-7" />
 
+            {/* The position, in the order the question is actually asked:
+                what I had, what I paid, what happened, what I was left with. */}
             <dl className="grid grid-cols-2 gap-x-6 gap-y-7 sm:gap-x-10">
               <div>
-                <dt className="wm-eyebrow text-ink-mute">Exposure</dt>
+                <dt className="wm-eyebrow text-ink-mute">What I had</dt>
                 <dd className="wm-numeral mt-2 text-2xl font-bold sm:text-3xl">{money(receipt.exposureUsd)}</dd>
+                <dd className="mt-1 text-xs font-medium text-ink-soft">Exposure</dd>
               </div>
               <div>
-                <dt className="wm-eyebrow text-ink-mute">Premium</dt>
+                <dt className="wm-eyebrow text-ink-mute">What I paid</dt>
                 <dd className="wm-numeral mt-2 text-2xl font-bold sm:text-3xl">{money(receipt.premiumUsd)}</dd>
+                <dd className="mt-1 text-xs font-medium text-ink-soft">Premium</dd>
               </div>
               <div>
-                <dt className="wm-eyebrow text-ink-mute">Actual move</dt>
+                <dt className="wm-eyebrow text-ink-mute">What happened</dt>
                 <dd className="wm-numeral mt-2 text-2xl font-bold sm:text-3xl">{pct(receipt.actualMovePct)}</dd>
+                <dd className="mt-1 text-xs font-medium text-ink-soft">Market move</dd>
               </div>
               <div>
-                <dt className="wm-eyebrow text-ink-mute">Payout</dt>
+                <dt className="wm-eyebrow text-ink-mute">What the hedge returned</dt>
                 <dd className="wm-numeral mt-2 text-2xl font-bold sm:text-3xl">{money(receipt.payoutUsd)}</dd>
+                <dd className="mt-1 text-xs font-medium text-ink-soft">Hedge payout</dd>
               </div>
               <div>
-                <dt className="wm-eyebrow text-ink-mute">Unhedged P&amp;L</dt>
+                <dt className="wm-eyebrow text-ink-mute">Without the hedge</dt>
                 <dd className="wm-numeral mt-2 text-2xl font-bold sm:text-3xl">{signedMoney(receipt.unhedgedPnlUsd)}</dd>
+                <dd className="mt-1 text-xs font-medium text-ink-soft">Unhedged P&amp;L</dd>
               </div>
               <div>
-                <dt className="wm-eyebrow text-ink-mute">Hedged P&amp;L</dt>
+                <dt className="wm-eyebrow text-ink-mute">What remained</dt>
                 <dd className="wm-numeral mt-2 text-2xl font-bold sm:text-3xl">{signedMoney(receipt.hedgedPnlUsd)}</dd>
+                <dd className="mt-1 text-xs font-medium text-ink-soft">Hedged P&amp;L</dd>
               </div>
             </dl>
 
             <div className="wm-dotline my-7" />
 
+            {/* The attribution answer: how much risk the protection removed. */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border-[3px] border-ink bg-ink p-6 text-paper">
-                <p className="wm-eyebrow text-paper/50">Net protection</p>
-                <p className="wm-numeral mt-2 text-4xl font-bold">{money(receipt.netProtectionUsd)}</p>
-                <p className="mt-2 text-sm font-bold text-paper/70">Efficiency {pct(receipt.efficiencyPct)}</p>
+                <p className="wm-eyebrow text-paper/50">Loss offset</p>
+                <p className="wm-numeral mt-2 text-4xl font-bold">{pct(receipt.lossOffsetPct)}</p>
+                <p className="mt-2 text-sm font-bold text-paper/70">
+                  {money(receipt.grossLossOffsetUsd)} of the loss covered
+                </p>
               </div>
               <div className="rounded-2xl border-[3px] border-ink bg-yellow p-6">
-                <p className="wm-eyebrow text-ink/70">Basis difference</p>
-                <p className="wm-numeral mt-2 text-4xl font-bold">{signedMoney(basisDifference)}</p>
+                <p className="wm-eyebrow text-ink/70">Net hedge contribution</p>
+                <p className="wm-numeral mt-2 text-4xl font-bold">{signedMoney(netContribution)}</p>
                 <p className="mt-2 text-sm font-medium leading-6">
-                  Payout minus the loss it was covering.
+                  Payout minus the premium you paid.
                 </p>
               </div>
             </div>
 
+            {overshoot > 0 ? (
+              <div className="mt-4 rounded-2xl border-[3px] border-ink bg-blue-pale p-6">
+                <p className="wm-eyebrow text-ink/70">Overshoot</p>
+                <p className="wm-numeral mt-2 text-3xl font-bold">{money(overshoot)}</p>
+                <p className="mt-2 text-sm font-medium leading-6">
+                  The contract paid {money(overshoot)} more than the loss it was bought to cover.
+                  That surplus is basis, not extra protection: a binary settles at its full face
+                  value or nothing, so it lands where it lands.
+                </p>
+              </div>
+            ) : null}
+
             <p className="mt-8 text-xs leading-6 text-ink-mute">
-              A binary Down Event Contract is defined by its event window and settlement rule, and
-              does not replicate a perfect put. The figures above reflect the contract&apos;s actual
-              settlement, not a modelled hedge.
+              Loss offset is the share of the realised loss the payout covered, so it cannot exceed
+              100%. Net hedge contribution is a separate figure: payout minus premium. A binary Down
+              Event Contract is defined by its event window and settlement rule and does not
+              replicate a put. Every figure here reflects the contract&apos;s actual settlement, not
+              a modelled hedge.
             </p>
           </article>
 

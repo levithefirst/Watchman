@@ -88,8 +88,14 @@ model Receipt {
   unhedgedPnlUsd   Decimal  @db.Decimal(30, 10)
   hedgedPnlUsd     Decimal  @db.Decimal(30, 10)
   payoutUsd        Decimal  @db.Decimal(30, 10)
-  netProtectionUsd Decimal  @db.Decimal(30, 10)
-  efficiencyPct    Decimal  @db.Decimal(20, 10)
+  // Attribution. grossLossOffsetUsd is capped at the realised loss, so
+  // lossOffsetPct is bounded at 100 by construction. netHedgeContributionUsd
+  // (payout - premium) is deliberately a separate figure: it is what the hedge
+  // added to the position, not how much loss it offset.
+  grossLossOffsetUsd      Decimal @db.Decimal(30, 10)
+  lossOffsetPct           Decimal @db.Decimal(20, 10)
+  netHedgeContributionUsd Decimal @db.Decimal(30, 10)
+  overshootUsd            Decimal @db.Decimal(30, 10)
   createdAt        DateTime @default(now())
   hedge            Hedge    @relation(fields: [hedgeId], references: [id], onDelete: Cascade)
 }

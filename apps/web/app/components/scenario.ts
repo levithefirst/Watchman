@@ -46,8 +46,9 @@ export const SHOWCASE_RESULT = calculateEffectiveness({
 });
 
 /**
- * Basis difference: what the binary actually paid, minus the loss it was
- * bought to cover. The single number that says a binary is not a put.
+ * Overshoot: what the binary actually paid, beyond the loss it was bought to
+ * cover. The single number that says a binary is not a put. Taken straight
+ * from the engine rather than recomputed here, so the page cannot drift from
+ * the product.
  */
-export const SHOWCASE_BASIS =
-  SHOWCASE_RESULT.hedgePayoutUsd - Math.max(0, -SHOWCASE_RESULT.unhedgedPnlUsd);
+export const SHOWCASE_OVERSHOOT = SHOWCASE_RESULT.overshootUsd;

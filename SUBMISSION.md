@@ -85,7 +85,7 @@ Somnia Shannon testnet (chain 50312)
 ## Demo link
 
 ```
-https://web-mauve-beta-27.vercel.app
+https://watchman-beta.vercel.app
 ```
 
 ## Demo video link
