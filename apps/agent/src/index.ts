@@ -1,5 +1,5 @@
 import { db } from "@watchman/db";
-import { asBinary, calculateEffectiveness, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC, quoteHedge, redeem, COLLATERAL_DECIMALS } from "@watchman/sdk";
+import { asBinary, calculateEffectiveness, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC, quoteHedge, redeem, COLLATERAL_DECIMALS, MARKET_STATUS } from "@watchman/sdk";
 
 const intervalMs = Number(process.env.SETTLEMENT_POLL_MS ?? 10_000);
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,6 +37,53 @@ async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany<{ in
       db.hedge.update({ where: { id: hedge.id }, data: { status: "REDEEMED", settledAt: new Date(), redeemedAt: redeemTxHash ? new Date() : null, redeemTxHash: redeemTxHash ?? null } }),
     ]);
     console.log(JSON.stringify({ event: "hedge_settled", hedgeId: hedge.id, marketId: hedge.marketId, payoutUsd, actualMovePct, lossOffsetPct: effectiveness.lossOffsetPct, netHedgeContributionUsd: effectiveness.netHedgeContributionUsd, redeemTxHash: redeemTxHash ?? null }));
+  } finally { await ctx.exchange.close().catch(() => undefined); }
+}
+
+/**
+ * Deterministic recovery for orders whose result was never saved.
+ *
+ * A hedge in EXECUTING means /api/protect sent an order on-chain and then
+ * failed before it could record the outcome. Real funds may have moved. The
+ * row still carries the wallet, market and requested size, so the truth is
+ * recoverable from the chain: if the signer holds a NO position in that
+ * market the order filled and the hedge becomes OPEN; if it holds none and
+ * the market has moved on, it never filled and the hedge becomes FAILED.
+ *
+ * Rows are only resolved on evidence. Anything ambiguous is left EXECUTING
+ * and logged, because silently guessing here is how funds get lost.
+ */
+async function reconcileExecutingHedges(): Promise<void> {
+  const stranded = await db.hedge.findMany({ where: { status: "EXECUTING" }, orderBy: { createdAt: "asc" }, take: 20 });
+  if (stranded.length === 0) return;
+  const ctx = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
+  try {
+    for (const hedge of stranded) {
+      try {
+        const onchain = await ctx.exchange.client.getMarketOnchain(hedge.marketId as `0x${string}`);
+        if (!ctx.walletAddress) {
+          console.error(JSON.stringify({ event: "hedge_reconcile_blocked", hedgeId: hedge.id, reason: "no signer configured" }));
+          continue;
+        }
+        const heldNo = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: onchain.outcomeToken, account: ctx.walletAddress, id: onchain.noId });
+        const contracts = Number(heldNo) / 10 ** (onchain.decimals || COLLATERAL_DECIMALS);
+        if (contracts > 0) {
+          // The order filled. Price is not recoverable from a balance, so the
+          // quoted price stands and the premium follows the real fill size.
+          const price = Number(hedge.downPrice);
+          await db.hedge.update({ where: { id: hedge.id }, data: { status: "OPEN", contractsFilled: contracts, premiumUsd: contracts * price } });
+          console.log(JSON.stringify({ event: "hedge_reconciled", hedgeId: hedge.id, outcome: "filled", contracts, txHash: hedge.txHash }));
+        } else if (onchain.isResolved || onchain.isVoided || onchain.status !== MARKET_STATUS.Trading) {
+          // No position and the market can no longer fill one: it never filled.
+          await db.hedge.update({ where: { id: hedge.id }, data: { status: "FAILED" } });
+          console.log(JSON.stringify({ event: "hedge_reconciled", hedgeId: hedge.id, outcome: "not_filled", txHash: hedge.txHash }));
+        } else {
+          console.error(JSON.stringify({ event: "hedge_reconcile_pending", hedgeId: hedge.id, marketId: hedge.marketId, txHash: hedge.txHash }));
+        }
+      } catch (error) {
+        console.error(JSON.stringify({ event: "hedge_reconcile_error", hedgeId: hedge.id, error: error instanceof Error ? error.message : "unknown error" }));
+      }
+    }
   } finally { await ctx.exchange.close().catch(() => undefined); }
 }
 
@@ -83,6 +130,8 @@ async function executePolicies(): Promise<void> {
   } finally { await ctx.exchange.close().catch(() => undefined); }
 }
 
-async function tick(): Promise<void> { await settleOpenHedges(); await executePolicies(); }
+// Reconcile first: a stranded EXECUTING hedge represents funds that may
+// already have moved, so it is resolved before any new work is started.
+async function tick(): Promise<void> { await reconcileExecutingHedges(); await settleOpenHedges(); await executePolicies(); }
 async function main(): Promise<void> { console.log("Watchman settlement/policy agent started on Somnia Shannon testnet (50312)"); while (true) { try { await tick(); } catch (error) { console.error(error); } await sleep(intervalMs); } }
 void main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });

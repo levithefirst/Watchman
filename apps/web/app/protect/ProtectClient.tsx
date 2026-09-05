@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import SiteHeader from "../components/SiteHeader";
@@ -16,7 +16,7 @@ type Asset = "BTC" | "ETH";
 const ASSETS = ["BTC", "ETH"] as const satisfies readonly Asset[];
 type WindowSeconds = 900 | 3600;
 interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fillablePct: number; limitedBy: "none" | "budget" | "liquidity"; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; faucetAvailable?: boolean; reason?: "no-liquidity" | "unavailable"; error?: string }
-interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; error?: string }
+interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; replayed?: boolean; status?: string; error?: string }
 
 export default function ProtectClient(): React.ReactElement {
   const { address, isConnected } = useAccount();
@@ -45,6 +45,11 @@ export default function ProtectClient(): React.ReactElement {
   const [fundingOpen, setFundingOpen] = useState(false);
   const [fundMessage, setFundMessage] = useState<string>();
   const [result, setResult] = useState<ProtectResponse>();
+  // Survives re-renders so a retry reuses the same idempotency key.
+  const attemptIdRef = useRef<string>(undefined);
+  // Set only when the server confirms an order executed but could not be
+  // saved, so the UI never claims a transaction exists without its hash.
+  const [failedTxHash, setFailedTxHash] = useState<string>();
   const [error, setError] = useState<string>();
 
   // The wallet a live order executes as, only meaningful once connected to
@@ -98,10 +103,23 @@ export default function ProtectClient(): React.ReactElement {
 
   const protect = async (): Promise<void> => {
     setProtecting(true); setError(undefined); setResult(undefined);
+    // One key per attempt, reused if this attempt is retried. The server
+    // refuses to place a second on-chain order for a key it has already seen,
+    // so a lost response can never turn into a double spend.
+    const requestId = attemptIdRef.current ?? crypto.randomUUID();
+    attemptIdRef.current = requestId;
     try {
-      const response = await fetch("/api/protect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...requestBody, demo: mode === "demo" }) });
+      const response = await fetch("/api/protect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...requestBody, demo: mode === "demo", requestId }) });
       const data = (await response.json()) as ProtectResponse;
-      if (!response.ok) throw new Error(data.error ?? "Protection failed");
+      if (!response.ok) {
+        // The server tells us whether funds actually moved. Keep the key so a
+        // retry is recognised as the same attempt rather than a new order.
+        setFailedTxHash(data.txHash ?? undefined);
+        throw new Error(data.error ?? "Protection failed");
+      }
+      // Succeeded: the next click is a genuinely new hedge.
+      attemptIdRef.current = undefined;
+      setFailedTxHash(undefined);
       setResult(data);
       track("protection_created", { hedgeId: data.hedgeId, simulated: data.simulated ?? true, asset, exposureUsd });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Protection failed"); }
@@ -306,7 +324,22 @@ export default function ProtectClient(): React.ReactElement {
                 ) : null}
 
                 {error ? (
-                  <p role="alert" className="mt-4 rounded-xl border-[3px] border-ink bg-flame px-4 py-3.5 text-sm font-bold text-paper">{error}</p>
+                  <div role="alert" className="mt-4 rounded-xl border-[3px] border-ink bg-flame px-4 py-3.5 text-sm font-bold text-paper">
+                    <p>{error}</p>
+                    {/* Only rendered when the server actually returned a hash,
+                        so "your transaction was not lost" is never an
+                        unverifiable claim. */}
+                    {failedTxHash ? (
+                      <a
+                        className="wm-numeral mt-2 inline-block break-all text-xs underline decoration-[3px] underline-offset-4"
+                        href={`https://shannon-explorer.somnia.network/tx/${failedTxHash}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        View your transaction on Somnia ↗
+                      </a>
+                    ) : null}
+                  </div>
                 ) : null}
               </Panel>
             </section>

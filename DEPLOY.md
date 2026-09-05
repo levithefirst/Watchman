@@ -143,6 +143,14 @@ If you want the deployed site to place real testnet orders instead of simulating
 
 ## Troubleshooting
 
+- **`Prisma Client could not locate the Query Engine` on Vercel** — this took down live execution once and is worth understanding. `@watchman/db` is in `transpilePackages`, which made webpack inline it *and* `@prisma/client` with it. Once Prisma is bundled there is no `require("@prisma/client")` left for Next's file tracer to follow, so the native query engine (`libquery_engine-*.so.node`) was never copied into the serverless function. `apps/web/next.config.ts` now sets `serverExternalPackages: ["@prisma/client", ".prisma/client"]` plus `outputFileTracingRoot`/`outputFileTracingIncludes` so the engine ships with the lambda. To confirm a build is safe before deploying:
+  ```
+  cd apps/web && pnpm build
+  grep -c libquery_engine .next/server/app/api/protect/route.js.nft.json
+  ```
+  That must print `1` or more. `0` means the engine is missing and every database call will fail in production.
+- **A hedge is stuck in `EXECUTING`** — this status means an order *was* sent on-chain and Watchman could not record the outcome. Funds may have moved. It is not an error state to clear by hand: the Railway agent reconciles it every poll by checking whether the signer holds a position in that market, then sets `OPEN` (with the real fill) or `FAILED`. Watch for `hedge_reconciled` in the agent logs. A row that stays `EXECUTING` with `hedge_reconcile_pending` means the market is still trading and the outcome is genuinely not yet determinable; leave it.
+
 - **`Module not found: Can't resolve '@watchman/sdk'` or `'@watchman/db'`** — these packages no longer need a build step (they ship TypeScript source directly, transpiled in-place by Next), so this specific error should not recur. If it does, your Vercel project almost certainly has an old Build or Install Command saved in **Project Settings → Build & Deployment** from before this fix — clear it (or overwrite it with the exact values in step 1 above) so `apps/web/vercel.json` takes effect, then redeploy. A saved dashboard value always wins over `vercel.json`.
 - **Railway build fails / "Failed to build an image"** — same root cause as above. Check **Settings** on the service and make the Build/Start commands match the table in step 2. Do not blanket-clear the Settings fields: the **Pre-Deploy Command** must survive, or migrations stop running (see next item).
 - **Agent logs `The table 'public.Hedge' does not exist in the current database`** — the Prisma migrations never ran against this database. The **Pre-Deploy Command** (`pnpm --filter @watchman/db exec prisma migrate deploy`) is missing or was cleared from the Railway service. Restore it per step 2 and redeploy; a healthy deploy logs `All migrations have been successfully applied.` before the agent's startup banner.

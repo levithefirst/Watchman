@@ -13,7 +13,15 @@ enum Asset {
 }
 
 enum HedgeStatus {
+  /** Intent recorded. Nothing has been sent on-chain yet. */
   QUOTED
+  /**
+   * An order HAS been sent on-chain and its outcome is not yet known. Money
+   * may already have moved. A row left in this state is the recovery target:
+   * it carries the wallet, market and requested size needed to reconcile
+   * against the chain. It must never be interpreted as "did not execute".
+   */
+  EXECUTING
   OPEN
   ACTIVE
   SETTLING
@@ -67,6 +75,14 @@ model Hedge {
   downPrice          Decimal     @db.Decimal(20, 10)
   txHash             String?
   redeemTxHash       String?
+  /**
+   * Client-supplied key for one protect attempt. Unique, so a retry whose
+   * response was lost cannot execute a second on-chain order: the insert
+   * loses the race and the existing hedge is returned instead.
+   */
+  idempotencyKey     String?     @unique
+  /** When the order was sent on-chain. Set before execution, never cleared. */
+  executionStartedAt DateTime?
   expiry             DateTime
   status             HedgeStatus @default(OPEN)
   createdAt          DateTime    @default(now())

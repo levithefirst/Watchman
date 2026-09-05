@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@watchman/db";
+import { logApiError, safeMessage } from "../_errors";
 
 interface PolicyBody { wallet?: string; demo?: boolean; asset: "BTC" | "ETH"; protectionPct: number; windowSeconds: 900 | 3600; maxPremiumUsd: number }
 const valid = (value: unknown): value is PolicyBody => { if (!value || typeof value !== "object") return false; const body = value as Record<string, unknown>; return (body.asset === "BTC" || body.asset === "ETH") && typeof body.protectionPct === "number" && (body.windowSeconds === 900 || body.windowSeconds === 3600) && typeof body.maxPremiumUsd === "number"; };
@@ -21,5 +22,5 @@ export async function POST(request: Request): Promise<NextResponse> {
     const user = await db.user.upsert({ where: { wallet }, update: { demo: raw.demo === true }, create: { wallet, demo: raw.demo === true } });
     const policy = await db.policy.create({ data: { userId: user.id, asset: raw.asset, protectionPct: raw.protectionPct, windowSeconds: raw.windowSeconds, maxPremiumUsd: raw.maxPremiumUsd, status: "ACTIVE" } });
     return NextResponse.json({ policy });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save policy" }, { status: 500 }); }
+  } catch (error) { logApiError("policy_failed", error); return NextResponse.json({ error: safeMessage(error, "Unable to save policy") }, { status: 500 }); }
 }

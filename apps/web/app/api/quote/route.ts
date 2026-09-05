@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cheapestDownQuote, createWatchmanContext, getTUSDCBalance, quoteHedge, type HedgeRequest } from "@watchman/sdk";
+import { logApiError, safeMessage } from "../_errors";
 
 interface QuoteBody { asset: "BTC" | "ETH"; exposureUsd: number; protectionPct: number; windowSeconds: 900 | 3600; maxPremiumUsd: number; wallet?: `0x${string}` }
 const isBody = (value: unknown): value is QuoteBody => { if (!value || typeof value !== "object") return false; const body = value as Record<string, unknown>; return (body.asset === "BTC" || body.asset === "ETH") && typeof body.exposureUsd === "number" && typeof body.protectionPct === "number" && (body.windowSeconds === 900 || body.windowSeconds === 3600) && typeof body.maxPremiumUsd === "number"; };
@@ -28,7 +29,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Anything thrown here is Watchman failing to reach the venue (chain
     // access, indexer, RPC), not the venue reporting no liquidity. It is
     // reported as its own kind so the page can say so plainly.
-    const message = error instanceof Error ? error.message : "Unable to quote protection";
+    logApiError("quote_failed", error);
+    const message = safeMessage(error, "Unable to quote protection");
     return NextResponse.json({ reason: "unavailable", error: message }, { status: 502 });
   }
 }

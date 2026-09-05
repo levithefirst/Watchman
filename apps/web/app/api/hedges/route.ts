@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@watchman/db";
+import { logApiError, safeMessage } from "../_errors";
 
 export async function GET(request: Request): Promise<NextResponse> {
   try {
@@ -7,7 +8,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     const user = await db.user.findUnique({ where: { wallet }, include: { hedges: { orderBy: { createdAt: "desc" }, include: { receipt: true } } } });
     return NextResponse.json({ hedges: user?.hedges ?? [] });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load hedges";
+    logApiError("hedges_list_failed", error);
+    const message = safeMessage(error, "Unable to load hedges");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

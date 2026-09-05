@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@watchman/db";
+import { logApiError, safeMessage } from "../../_errors";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   try {
@@ -8,7 +9,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (!hedge) return NextResponse.json({ error: "Hedge not found" }, { status: 404 });
     return NextResponse.json({ hedge });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load hedge";
+    logApiError("hedge_get_failed", error);
+    const message = safeMessage(error, "Unable to load hedge");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

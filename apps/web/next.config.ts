@@ -1,6 +1,34 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
+  // Prisma must NOT be bundled by webpack.
+  //
+  // @watchman/db is transpiled (below) because it ships TypeScript source.
+  // That made webpack inline it, and with it `@prisma/client`. Once Prisma is
+  // inlined there is no `require("@prisma/client")` left for Next's file
+  // tracer to follow, so neither the package nor its native query engine
+  // (libquery_engine-*.so.node) was copied into the serverless function. The
+  // deployed lambda then threw "Prisma Client could not locate the Query
+  // Engine" on the first query, which on /api/protect happened AFTER the
+  // on-chain order had already been sent.
+  //
+  // Keeping it external leaves a real runtime require in place, which the
+  // tracer follows to the engine binary. Verified by inspecting
+  // .next/server/app/api/protect/route.js.nft.json for the engine.
+  serverExternalPackages: ["@prisma/client", ".prisma/client"],
+  // pnpm workspace: the packages this app needs live in the repo-root
+  // node_modules, above apps/web. Without this the tracer roots itself at
+  // apps/web and cannot reach them.
+  outputFileTracingRoot: path.join(__dirname, "../.."),
+  // Belt and braces: pnpm stores the generated client under a content-hashed
+  // .pnpm directory, so name it explicitly rather than relying on the tracer
+  // resolving every symlink.
+  outputFileTracingIncludes: {
+    "/api/**/*": [
+      "../../node_modules/.pnpm/@prisma+client*/node_modules/.prisma/client/**/*",
+    ],
+  },
   // @watchman/sdk and @watchman/db are internal pnpm workspace packages
   // that ship raw TypeScript source (package.json "main"/"exports" point
   // straight at src/index.ts, no build step). Next externalizes
