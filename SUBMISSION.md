@@ -1,6 +1,6 @@
 # DoraHacks submission — copy/paste text
 
-Everything below is written to be pasted directly into the submission form. Replace the demo link placeholder before submitting.
+Everything below is written to be pasted directly into the submission form. Add the final demo-video URL when the recording is ready.
 
 ---
 
@@ -12,10 +12,8 @@ Watchman — Short-Duration Portfolio Insurance on DreamDEX
 
 ## Tagline / short description
 
-(1-2 sentences, for the card/summary field)
-
 ```
-Watchman is the risk-management layer for DreamDEX Event Contracts: give it an exposure, a protection target and a premium budget, and it finds the cheapest tradeable Down contract, sizes the hedge against real liquidity, executes, settles, redeems, and hands back a receipt showing exactly what the hedge did — including the basis difference between the binary payout and your actual loss.
+Watchman is portfolio insurance for DreamDEX Event Contracts that tells you whether the hedge actually offset the loss, not another Up/Down trading UI.
 ```
 
 ## Long description
@@ -23,53 +21,41 @@ Watchman is the risk-management layer for DreamDEX Event Contracts: give it an e
 ```
 Problem
 
-Holding BTC or ETH through a volatile window forces a bad tradeoff: sell the
-position and eat the cost, or hold it and eat the drawdown. Perp hedges add
-funding costs and liquidation risk, and real options aren't available to
-most on-chain holders.
+Holding BTC or ETH through a volatile window forces a bad tradeoff: sell the position or absorb the drawdown. Perp hedges add funding and liquidation risk, while short-dated on-chain options are not readily available for ordinary holders.
 
 Solution
 
-DreamDEX already lists short-duration binary Event Contracts on Somnia that
-could hedge this — but they're a raw trading primitive. Someone still has
-to find the right market, size a position against their actual exposure,
-execute before the window closes, track settlement, and figure out what
-happened to their money.
+DreamDEX already lists short-duration binary Event Contracts on Somnia that can hedge downside. The raw primitive still leaves someone to find the right market, size the hedge against real exposure and liquidity, execute before the window closes, track settlement, and work out what the hedge actually did.
 
-Watchman is that missing layer. Give it an exposure, a protection
-percentage, and a premium budget, and it:
+Watchman is that risk-management layer. Give it an exposure, a protection percentage, and a premium budget, and it:
 
-1. Finds the cheapest currently-tradeable Down Event Contract on DreamDEX
-2. Sizes the hedge against the premium budget and available liquidity
-3. Executes an IOC order (or simulates it in Demo mode)
-4. Watches the market resolve and redeems the winning side automatically
-5. Writes a permanent Hedge Receipt showing unhedged P&L vs. hedged P&L,
-   payout, net protection, and efficiency — in plain numbers
+1. Finds the cheapest currently-tradeable Down Event Contract
+2. Sizes the hedge against the premium budget and live liquidity
+3. Executes an IOC order, or simulates it in Demo mode
+4. Tracks live settlement and redemption through the existing worker
+5. Produces a Hedge Receipt showing exposure, premium, actual move, unhedged P&L, hedge payout, hedged P&L, gross loss offset, loss offset percentage, net hedge contribution, and overshoot
 
-Why it's different
+Why it is different
 
-Watchman is not a prediction bot — it only ever buys the Down side to
-offset an existing long, sized to a protection percentage the user
-chooses. The "alpha" is risk management, not forecasting. It's also
-honest about basis risk: a binary Event Contract pays a fixed amount, not
-a variable amount proportional to loss like a real put, and every receipt
-shows that gap explicitly instead of hiding it. And it closes the loop
-end to end — quote, size, execute, settle, redeem, and receipt are one
-pipeline with one data model, not a UI bolted onto someone else's order
-book.
+Watchman is a portfolio-insurance layer, not a prediction bot and not another Up/Down trading interface. It buys Down contracts to offset an existing long and makes the result measurable.
 
-Judges can try the entire flow with zero setup — no wallet, no faucet, no
-funding required. Demo mode runs the real quoting and sizing logic against
-live DreamDEX markets and only skips the final on-chain write, so the
-numbers you see are real even when the transaction is simulated.
+A binary Event Contract is not a put. Its payout is fixed, so it can under-cover or over-cover the actual loss. Watchman puts that basis risk directly on the receipt instead of hiding it behind a single protection number.
+
+The sizing is also honest. If a user requests $5,000 of protection but the market can currently fill only $200, Watchman says so and limits the executable size rather than pretending the full amount is available.
 
 Best demo path
 
-1. Click "Try Demo — $10k BTC, 50%, 15m" on the landing page
-2. Review the live DreamDEX quote and click "Protect Position"
-3. Open the created hedge to watch it being tracked
-4. Open the Hedge Receipt once the window resolves to see exactly what
-   the hedge did
+1. Open https://watchman-beta.vercel.app/
+2. Go to Protect. The default demo is BTC / 1 hour.
+3. Observe the live quote and liquidity constraint.
+4. Click Protect Position in Demo mode.
+5. Open Hedges and select the created demo hedge.
+6. Open the full receipt.
+7. Compare unhedged P&L with hedged P&L and inspect loss offset, net hedge contribution, and overshoot where applicable.
+
+Watchman does not just show that a hedge was bought. It shows what the hedge actually protected.
+
+Demo mode is clearly labelled. The demo hedge uses the real quote and sizing result, then runs the existing effectiveness engine against a visible -3.00% scenario so judges do not have to wait for a market to resolve. No fake fill, transaction hash, or on-chain settlement is presented as real.
 ```
 
 ## Tech stack
@@ -85,13 +71,13 @@ Somnia Shannon testnet (chain 50312)
 ## Demo link
 
 ```
-https://watchman-beta.vercel.app
+https://watchman-beta.vercel.app/
 ```
 
 ## Demo video link
 
 ```
-ACTION REQUIRED — record with DEMO_SCRIPT.md, then paste the URL here before submitting.
+PASTE FINAL 2–3 MINUTE VIDEO URL HERE AFTER RECORDING WITH DEMO_SCRIPT.md.
 ```
 
 ## Repository
