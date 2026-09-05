@@ -28,7 +28,7 @@ export default function ProtectClient(): React.ReactElement {
   const [asset, setAsset] = useState<Asset>("BTC");
   const [exposureUsd, setExposureUsd] = useState(10000);
   const [protectionPct, setProtectionPct] = useState(50);
-  const [windowSeconds, setWindowSeconds] = useState<WindowSeconds>(900);
+  const [windowSeconds, setWindowSeconds] = useState<WindowSeconds>(3600);
   const [maxPremiumUsd, setMaxPremiumUsd] = useState(150);
   const [balance, setBalance] = useState<number>();
   const [quote, setQuote] = useState<QuoteResponse["quote"]>();
@@ -132,7 +132,6 @@ export default function ProtectClient(): React.ReactElement {
     <>
       <SiteHeader variant="app" />
       <main id="main" className="bg-paper">
-        {/* Page head */}
         <section className="wm-rays wm-grain relative overflow-hidden border-b-[3px] border-ink" style={{ ["--ry" as string]: "42%" }}>
           <div className="relative mx-auto max-w-6xl px-5 py-12 sm:px-8 sm:py-16">
             <Tag tone="pink">Protect a position</Tag>
@@ -150,43 +149,18 @@ export default function ProtectClient(): React.ReactElement {
 
         <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8 sm:py-14">
           <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr] lg:gap-8">
-            {/* ------------------------------------- CONFIGURE */}
             <section aria-labelledby="configure-title">
               <Panel className="p-6 sm:p-8">
                 <h2 id="configure-title" className="sr-only">Configure your protection</h2>
-
-                {/* Mode switch */}
                 <div role="group" aria-label="Execution mode" className="flex gap-2 rounded-2xl border-[3px] border-ink bg-paper-deep p-1.5">
-                  <button
-                    type="button"
-                    onClick={() => { setMode("demo"); track("demo_started", { asset, exposureUsd }); }}
-                    aria-pressed={mode === "demo"}
-                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "demo" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"}`}
-                  >
-                    Demo mode
-                  </button>
+                  <button type="button" onClick={() => { setMode("demo"); track("demo_started", { asset, exposureUsd }); }} aria-pressed={mode === "demo"} className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "demo" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"}`}>Demo mode</button>
                   <ConnectButton.Custom>
                     {({ account, chain, openConnectModal, openAccountModal, openChainModal, mounted }) => {
                       const ready = mounted;
                       const connected = ready && account && chain;
                       return (
-                        <button
-                          type="button"
-                          disabled={!ready}
-                          onClick={() => {
-                            if (!connected) { openConnectModal(); return; }
-                            if (chain.unsupported) { openChainModal(); return; }
-                            setMode("wallet");
-                            openAccountModal();
-                          }}
-                          aria-pressed={mode === "wallet"}
-                          className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "wallet" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"} ${!ready ? "opacity-0" : ""}`}
-                        >
-                          {connected
-                            ? chain.unsupported
-                              ? "Wrong network"
-                              : `${account.address.slice(0, 6)}…${account.address.slice(-4)}`
-                            : "Connect wallet"}
+                        <button type="button" disabled={!ready} onClick={() => { if (!connected) { openConnectModal(); return; } if (chain.unsupported) { openChainModal(); return; } setMode("wallet"); openAccountModal(); }} aria-pressed={mode === "wallet"} className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${mode === "wallet" ? "border-[3px] border-ink bg-yellow shadow-[3px_3px_0_0_#111]" : "text-ink-soft hover:bg-white/60"} ${!ready ? "opacity-0" : ""}`}>
+                          {connected ? chain.unsupported ? "Wrong network" : `${account.address.slice(0, 6)}…${account.address.slice(-4)}` : "Connect wallet"}
                         </button>
                       );
                     }}
@@ -195,358 +169,65 @@ export default function ProtectClient(): React.ReactElement {
 
                 {wrongNetwork ? (
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-flame px-4 py-3.5 text-paper">
-                    <p className="text-sm font-bold">
-                      Wrong network. Switch your wallet to Somnia Shannon (chain 50312) to use live
-                      mode.
-                    </p>
-                    <Button
-                      tone="white"
-                      size="sm"
-                      onClick={() => switchChain({ chainId: CHAIN_ID })}
-                      disabled={switchingChain}
-                    >
-                      {switchingChain ? "Switching…" : "Switch network"}
-                    </Button>
+                    <p className="text-sm font-bold">Wrong network. Switch your wallet to Somnia Shannon (chain 50312) to use live mode.</p>
+                    <Button tone="white" size="sm" onClick={() => switchChain({ chainId: CHAIN_ID })} disabled={switchingChain}>{switchingChain ? "Switching…" : "Switch network"}</Button>
                   </div>
                 ) : null}
 
-                {/* Execution badge, must always be unmistakable */}
-                <p
-                  className={`mt-4 inline-flex items-center gap-2.5 rounded-full border-[3px] border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest ${willSimulate ? "bg-blue" : "bg-mint"}`}
-                >
-                  <span aria-hidden="true" className={`block h-2.5 w-2.5 rounded-full ${willSimulate ? "bg-ink" : "bg-ink"}`} />
+                <p className={`mt-4 inline-flex items-center gap-2.5 rounded-full border-[3px] border-ink px-4 py-2 text-xs font-bold uppercase tracking-widest ${willSimulate ? "bg-blue" : "bg-mint"}`}>
+                  <span aria-hidden="true" className="block h-2.5 w-2.5 rounded-full bg-ink" />
                   {willSimulate ? "Simulated order, no funds needed" : "Live testnet execution"}
                 </p>
 
-                {/* Asset + exposure */}
                 <div className="mt-8 grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <span id="asset-label" className="wm-eyebrow text-ink-mute">Asset</span>
-                    <div className="mt-2.5">
-                      <AssetSelect
-                        id="asset"
-                        label="Asset"
-                        value={asset}
-                        options={ASSETS}
-                        onChange={setAsset}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="exposure" className="wm-eyebrow text-ink-mute">Exposure (USD)</label>
-                    <input
-                      id="exposure"
-                      type="number"
-                      min={1}
-                      inputMode="numeric"
-                      value={exposureUsd}
-                      onChange={(event) => setExposureUsd(Number(event.target.value))}
-                      className="wm-input mt-2.5"
-                    />
-                  </div>
+                  <div><span id="asset-label" className="wm-eyebrow text-ink-mute">Asset</span><div className="mt-2.5"><AssetSelect id="asset" label="Asset" value={asset} options={ASSETS} onChange={setAsset} /></div></div>
+                  <div><label htmlFor="exposure" className="wm-eyebrow text-ink-mute">Exposure (USD)</label><input id="exposure" type="number" min={1} inputMode="numeric" value={exposureUsd} onChange={(event) => setExposureUsd(Number(event.target.value))} className="wm-input mt-2.5" /></div>
                 </div>
 
-                {/* Protection */}
                 <div className="mt-8">
-                  <div className="flex items-end justify-between gap-4">
-                    <label htmlFor="protection" className="wm-eyebrow text-ink-mute">Protection</label>
-                    <p className="wm-numeral text-3xl font-bold leading-none">{protectionPct}%</p>
-                  </div>
-                  <input
-                    id="protection"
-                    type="range"
-                    min={10}
-                    max={100}
-                    step={5}
-                    value={protectionPct}
-                    onChange={(event) => setProtectionPct(Number(event.target.value))}
-                    className="wm-range mt-4"
-                    style={{ ["--fill" as string]: `${((protectionPct - 10) / 90) * 100}%` }}
-                    aria-describedby="protection-help"
-                  />
-                  <p id="protection-help" className="mt-3 text-sm font-medium text-ink-soft">
-                    Target: a hedge that can pay out{" "}
-                    <strong className="wm-tabular font-bold text-ink">{money(protectedUsd)}</strong> against
-                    your {money(exposureUsd)} position. What the market can actually fill is shown in
-                    the quote.
-                  </p>
+                  <div className="flex items-end justify-between gap-4"><label htmlFor="protection" className="wm-eyebrow text-ink-mute">Protection</label><p className="wm-numeral text-3xl font-bold leading-none">{protectionPct}%</p></div>
+                  <input id="protection" type="range" min={10} max={100} step={5} value={protectionPct} onChange={(event) => setProtectionPct(Number(event.target.value))} className="wm-range mt-4" style={{ ["--fill" as string]: `${((protectionPct - 10) / 90) * 100}%` }} aria-describedby="protection-help" />
+                  <p id="protection-help" className="mt-3 text-sm font-medium text-ink-soft">Target: a hedge that can pay out <strong className="wm-tabular font-bold text-ink">{money(protectedUsd)}</strong> against your {money(exposureUsd)} position. What the market can actually fill is shown in the quote.</p>
                 </div>
 
-                {/* Window + premium */}
                 <div className="mt-8 grid gap-5 sm:grid-cols-2">
-                  <div>
-                    <span className="wm-eyebrow text-ink-mute">Protection window</span>
-                    <div role="group" aria-label="Protection window" className="mt-2.5 flex gap-2.5">
-                      {([[900, "15 min"], [3600, "1 hour"]] as const).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => setWindowSeconds(value)}
-                          aria-pressed={windowSeconds === value}
-                          className={`flex-1 rounded-xl border-[3px] border-ink px-4 py-3 text-sm font-bold uppercase tracking-wide transition-all ${windowSeconds === value ? "bg-pink shadow-[3px_3px_0_0_#111]" : "bg-white text-ink-soft hover:bg-paper-deep"}`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="premium" className="wm-eyebrow text-ink-mute">Max premium (USD)</label>
-                    <input
-                      id="premium"
-                      type="number"
-                      min={0.01}
-                      step={1}
-                      inputMode="decimal"
-                      value={maxPremiumUsd}
-                      onChange={(event) => setMaxPremiumUsd(Number(event.target.value))}
-                      className="wm-input mt-2.5"
-                    />
-                  </div>
+                  <div><span className="wm-eyebrow text-ink-mute">Protection window</span><div role="group" aria-label="Protection window" className="mt-2.5 flex gap-2.5">{([[900, "15 min"], [3600, "1 hour"]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setWindowSeconds(value)} aria-pressed={windowSeconds === value} className={`flex-1 rounded-xl border-[3px] border-ink px-4 py-3 text-sm font-bold uppercase tracking-wide transition-all ${windowSeconds === value ? "bg-pink shadow-[3px_3px_0_0_#111]" : "bg-white text-ink-soft hover:bg-paper-deep"}`}>{label}</button>)}</div></div>
+                  <div><label htmlFor="premium" className="wm-eyebrow text-ink-mute">Max premium (USD)</label><input id="premium" type="number" min={0.01} step={1} inputMode="decimal" value={maxPremiumUsd} onChange={(event) => setMaxPremiumUsd(Number(event.target.value))} className="wm-input mt-2.5" /></div>
                 </div>
 
                 <BasisNote className="mt-8" />
 
-                {mode === "wallet" ? (
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-paper-deep p-4">
-                    <span className="text-sm font-bold">
-                      tUSDC balance:{" "}
-                      <span className="wm-numeral">{balance === undefined ? "checking…" : money(balance)}</span>
-                    </span>
-                    <Button tone="white" size="sm" onClick={openFunding}>
-                      Fund with tUSDC
-                    </Button>
-                  </div>
-                ) : null}
-
-                {fundMessage ? (
-                  <p role="status" className="mt-3 rounded-xl border-[3px] border-ink bg-mint px-4 py-3 text-sm font-bold">{fundMessage}</p>
-                ) : null}
-
-                {error ? (
-                  <div role="alert" className="mt-4 rounded-xl border-[3px] border-ink bg-flame px-4 py-3.5 text-sm font-bold text-paper">
-                    <p>{error}</p>
-                    {/* Only rendered when the server actually returned a hash,
-                        so "your transaction was not lost" is never an
-                        unverifiable claim. */}
-                    {failedTxHash ? (
-                      <a
-                        className="wm-numeral mt-2 inline-block break-all text-xs underline decoration-[3px] underline-offset-4"
-                        href={`https://shannon-explorer.somnia.network/tx/${failedTxHash}`}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                      >
-                        View your transaction on Somnia ↗
-                      </a>
-                    ) : null}
-                  </div>
-                ) : null}
+                {mode === "wallet" ? <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-paper-deep p-4"><span className="text-sm font-bold">tUSDC balance: <span className="wm-numeral">{balance === undefined ? "checking…" : money(balance)}</span></span><Button tone="white" size="sm" onClick={openFunding}>Fund with tUSDC</Button></div> : null}
+                {fundMessage ? <p role="status" className="mt-3 rounded-xl border-[3px] border-ink bg-mint px-4 py-3 text-sm font-bold">{fundMessage}</p> : null}
+                {error ? <div role="alert" className="mt-4 rounded-xl border-[3px] border-ink bg-flame px-4 py-3.5 text-sm font-bold text-paper"><p>{error}</p>{failedTxHash ? <a className="wm-numeral mt-2 inline-block break-all text-xs underline decoration-[3px] underline-offset-4" href={`https://shannon-explorer.somnia.network/tx/${failedTxHash}`} target="_blank" rel="noreferrer noopener">View your transaction on Somnia ↗</a> : null}</div> : null}
               </Panel>
             </section>
 
-            {/* ------------------------------------- QUOTE */}
             <section aria-labelledby="quote-title" className="lg:sticky lg:top-24 lg:self-start">
               <Panel className="p-6 sm:p-8">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 id="quote-title" className="wm-eyebrow text-ink-mute">Live quote</h2>
-                  <Tag tone="blue" className="!px-3 !py-1 !shadow-none text-[10px]">Somnia 50312</Tag>
-                </div>
-
-                {loadingQuote && !quote ? (
-                  <div className="mt-7 space-y-4" aria-live="polite" aria-busy="true">
-                    <span className="sr-only">Loading quote…</span>
-                    <div className="wm-skel h-14 w-40" />
-                    <div className="wm-skel h-4 w-52" />
-                    <div className="mt-8 space-y-3">
-                      <div className="wm-skel h-6 w-full" />
-                      <div className="wm-skel h-6 w-full" />
-                      <div className="wm-skel h-6 w-full" />
-                      <div className="wm-skel h-6 w-full" />
-                    </div>
-                    <div className="wm-skel h-14 w-full rounded-2xl" />
-                  </div>
-                ) : quote ? (
-                  <div aria-live="polite">
-                    <div className="mt-6 flex items-end gap-3">
-                      <p className="wm-numeral text-6xl font-bold leading-none">{(quote.downAsk * 100).toFixed(1)}¢</p>
-                      {loadingQuote ? <span className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-mute">updating…</span> : null}
-                    </div>
-                    <p className="mt-2 text-sm font-medium text-ink-soft">Down price · {quote.symbol}</p>
-
-                    {/* Protection capacity: what you asked for against what
-                        this market can actually give you, before you commit. */}
-                    <section
-                      aria-labelledby="capacity-title"
-                      className={`mt-7 rounded-2xl border-[3px] border-ink p-5 ${
-                        quote.hedge.contractsToBuy <= 0
-                          ? "bg-flame text-paper"
-                          : quote.hedge.fullyFunded
-                            ? "bg-mint"
-                            : "bg-yellow"
-                      }`}
-                    >
-                      <p id="capacity-title" className="wm-eyebrow opacity-80">
-                        Protection capacity
-                      </p>
-
-                      <dl className="mt-3 space-y-2">
-                        <div className="flex items-baseline justify-between gap-3">
-                          <dt className="text-sm font-bold">Requested protection</dt>
-                          <dd className="wm-numeral text-lg font-bold">
-                            {money(quote.hedge.protectedAmountUsd)}
-                          </dd>
-                        </div>
-                        <div className="flex items-baseline justify-between gap-3">
-                          <dt className="text-sm font-bold">Currently obtainable</dt>
-                          <dd className="wm-numeral text-2xl font-bold">
-                            {money(quote.hedge.potentialPayoutUsd)}
-                          </dd>
-                        </div>
-                      </dl>
-
-                      <div
-                        className="mt-3 h-3 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white"
-                        role="img"
-                        aria-label={`${quote.hedge.fillablePct.toFixed(0)} percent of the requested protection is obtainable right now`}
-                      >
-                        <div
-                          className="h-full bg-ink"
-                          style={{ width: `${quote.hedge.fillablePct.toFixed(1)}%` }}
-                        />
-                      </div>
-                      <p className="wm-numeral mt-2 text-sm font-bold">
-                        Fillable: {quote.hedge.fillablePct.toFixed(quote.hedge.fillablePct < 10 ? 1 : 0)}%
-                        {quote.hedge.contractsToBuy > 0 ? (
-                          <span className="font-medium opacity-80">
-                            {" "}
-                            · costs {money(quote.hedge.premiumUsd)}
-                          </span>
-                        ) : null}
-                      </p>
-
-                      {!quote.hedge.fullyFunded ? (
-                        <p className="mt-3 text-sm font-bold leading-6">
-                          {quote.hedge.limitedBy === "budget" ? "Budget-limited. " : "Liquidity-limited. "}
-                          {quote.hedge.reason}
-                        </p>
-                      ) : null}
-                    </section>
-
-                    <dl className="mt-6 divide-y-[3px] divide-paper-deep">
-                      <Row label="Down contracts" value={count(quote.hedge.contractsToBuy)} />
-                      <Row label="Premium you pay" value={money(quote.hedge.premiumUsd)} strong />
-                      <Row
-                        label="Max payout if it resolves Down"
-                        value={money(quote.hedge.potentialPayoutUsd)}
-                        strong
-                      />
-                      <Row label="Premium / obtainable protection" value={pct(quote.hedge.costPctOfProtected)} />
-                      <Row label="Worst case" value={`−${money(quote.hedge.premiumUsd)}`} />
-                    </dl>
-
-                    <p className="mt-4 text-xs leading-5 text-ink-soft">
-                      Binary settlement: each contract pays $1.00 if BTC resolves Down over the
-                      window, $0 otherwise. There is no partial payout, so this will not equal your
-                      actual loss. The receipt shows the difference.
-                    </p>
-
-                    <Button
-                      tone="yellow"
-                      size="lg"
-                      full
-                      className="group mt-7"
-                      disabled={protecting || quote.hedge.contractsToBuy <= 0}
-                      onClick={() => void protect()}
-                    >
-                      {protecting ? "Protecting…" : "Protect position"}
-                      {!protecting ? <Arrow /> : null}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="mt-7 rounded-2xl border-[3px] border-ink bg-paper-deep p-6" aria-live="polite">
-                    {quoteFailureKind === "unavailable" ? (
-                      <>
-                        <p className="text-lg font-bold">Market data unavailable</p>
-                        <p className="mt-2.5 text-sm leading-6 text-ink-soft">
-                          Watchman could not reach DreamDEX on Somnia Shannon, so it has no prices
-                          to quote from. This is a connection problem on our side, not a reading
-                          that the market is empty. Retry in a moment.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-lg font-bold">No usable live quote</p>
-                        <p className="mt-2.5 text-sm leading-6 text-ink-soft">
-                          Watchman reached DreamDEX and found no currently Trading market with Down
-                          liquidity for this asset and window. Try the other window, or check back
-                          in a moment.
-                        </p>
-                      </>
-                    )}
-                    {quoteError ? (
-                      <details className="mt-4 rounded-xl border-[3px] border-ink bg-white px-4 py-3">
-                        <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-widest text-ink-soft">
-                          Technical detail
-                        </summary>
-                        <p className="wm-numeral mt-3 break-words text-xs leading-5 text-ink-soft">
-                          {quoteError}
-                        </p>
-                      </details>
-                    ) : null}
-                  </div>
-                )}
-
-                {result ? (
-                  <div role="status" className="mt-6 rounded-2xl border-[3px] border-ink bg-mint p-5">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <p className="text-lg font-bold">Protection created</p>
-                      {result.simulated ? (
-                        <span className="rounded-full border-[3px] border-ink bg-blue px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest">
-                          Simulated order
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="wm-numeral mt-2 break-all text-xs font-bold text-ink-soft">{result.hedgeId}</p>
-                    {result.simulated ? (
-                      <p className="mt-3 text-sm leading-6">
-                        No on-chain order was placed. The full pipeline ran in simulation so you can
-                        see the whole flow without funding a wallet.
-                      </p>
-                    ) : result.txHash ? (
-                      <a
-                        className="mt-3 inline-block text-sm font-bold underline decoration-[3px] underline-offset-4"
-                        href={`https://shannon-explorer.somnia.network/tx/${result.txHash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View transaction ↗
-                      </a>
-                    ) : null}
-                    <a
-                      href={`/hedges/${result.hedgeId}`}
-                      className="wm-press mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-ink px-5 py-3.5 text-sm font-bold uppercase tracking-wide text-paper no-underline"
-                    >
-                      View hedge
-                    </a>
-                  </div>
-                ) : null}
+                <div className="flex items-center justify-between gap-3"><h2 id="quote-title" className="wm-eyebrow text-ink-mute">Live quote</h2><Tag tone="blue" className="!px-3 !py-1 !shadow-none text-[10px]">Somnia 50312</Tag></div>
+                {loadingQuote && !quote ? <div className="mt-7 space-y-4" aria-live="polite" aria-busy="true"><span className="sr-only">Loading quote…</span><div className="wm-skel h-14 w-40" /><div className="wm-skel h-4 w-52" /><div className="mt-8 space-y-3"><div className="wm-skel h-6 w-full" /><div className="wm-skel h-6 w-full" /><div className="wm-skel h-6 w-full" /><div className="wm-skel h-6 w-full" /></div><div className="wm-skel h-14 w-full rounded-2xl" /></div> : quote ? <div aria-live="polite">
+                  <div className="mt-6 flex items-end gap-3"><p className="wm-numeral text-6xl font-bold leading-none">{(quote.downAsk * 100).toFixed(1)}¢</p>{loadingQuote ? <span className="mb-2 text-xs font-bold uppercase tracking-widest text-ink-mute">updating…</span> : null}</div>
+                  <p className="mt-2 text-sm font-medium text-ink-soft">Down price · {quote.symbol}</p>
+                  <section aria-labelledby="capacity-title" className={`mt-7 rounded-2xl border-[3px] border-ink p-5 ${quote.hedge.contractsToBuy <= 0 ? "bg-flame text-paper" : quote.hedge.fullyFunded ? "bg-mint" : "bg-yellow"}`}>
+                    <p id="capacity-title" className="wm-eyebrow opacity-80">Protection capacity</p>
+                    <dl className="mt-3 space-y-2"><div className="flex items-baseline justify-between gap-3"><dt className="text-sm font-bold">Requested protection</dt><dd className="wm-numeral text-lg font-bold">{money(quote.hedge.protectedAmountUsd)}</dd></div><div className="flex items-baseline justify-between gap-3"><dt className="text-sm font-bold">Currently obtainable</dt><dd className="wm-numeral text-2xl font-bold">{money(quote.hedge.potentialPayoutUsd)}</dd></div></dl>
+                    <div className="mt-3 h-3 w-full overflow-hidden rounded-full border-[3px] border-ink bg-white" role="img" aria-label={`${quote.hedge.fillablePct.toFixed(0)} percent of the requested protection is obtainable right now`}><div className="h-full bg-ink" style={{ width: `${quote.hedge.fillablePct.toFixed(1)}%` }} /></div>
+                    <p className="wm-numeral mt-2 text-sm font-bold">Fillable: {quote.hedge.fillablePct.toFixed(quote.hedge.fillablePct < 10 ? 1 : 0)}%{quote.hedge.contractsToBuy > 0 ? <span className="font-medium opacity-80"> · costs {money(quote.hedge.premiumUsd)}</span> : null}</p>
+                    {!quote.hedge.fullyFunded ? <p className="mt-3 text-sm font-bold leading-6">{quote.hedge.limitedBy === "budget" ? "Budget-limited. " : "Liquidity-limited. "}{quote.hedge.reason}</p> : null}
+                  </section>
+                  <dl className="mt-6 divide-y-[3px] divide-paper-deep"><Row label="Down contracts" value={count(quote.hedge.contractsToBuy)} /><Row label="Premium you pay" value={money(quote.hedge.premiumUsd)} strong /><Row label="Max payout if it resolves Down" value={money(quote.hedge.potentialPayoutUsd)} strong /><Row label="Premium / obtainable protection" value={pct(quote.hedge.costPctOfProtected)} /><Row label="Worst case" value={`−${money(quote.hedge.premiumUsd)}`} /></dl>
+                  <p className="mt-4 text-xs leading-5 text-ink-soft">Binary settlement: each contract pays $1.00 if BTC resolves Down over the window, $0 otherwise. There is no partial payout, so this will not equal your actual loss. The receipt shows the difference.</p>
+                  <Button tone="yellow" size="lg" full className="group mt-7" disabled={protecting || quote.hedge.contractsToBuy <= 0} onClick={() => void protect()}>{protecting ? "Protecting…" : "Protect position"}{!protecting ? <Arrow /> : null}</Button>
+                </div> : <div className="mt-7 rounded-2xl border-[3px] border-ink bg-paper-deep p-6" aria-live="polite">{quoteFailureKind === "unavailable" ? <><p className="text-lg font-bold">Market data unavailable</p><p className="mt-2.5 text-sm leading-6 text-ink-soft">Watchman could not reach DreamDEX on Somnia Shannon, so it has no prices to quote from. This is a connection problem on our side, not a reading that the market is empty. Retry in a moment.</p></> : <><p className="text-lg font-bold">No usable live quote</p><p className="mt-2.5 text-sm leading-6 text-ink-soft">Watchman reached DreamDEX and found no currently Trading market with Down liquidity for this asset and window. Try the other window, or check back in a moment.</p></>}{quoteError ? <details className="mt-4 rounded-xl border-[3px] border-ink bg-white px-4 py-3"><summary className="cursor-pointer text-[11px] font-bold uppercase tracking-widest text-ink-soft">Technical detail</summary><p className="wm-numeral mt-3 break-words text-xs leading-5 text-ink-soft">{quoteError}</p></details> : null}</div>}
+                {result ? <div role="status" className="mt-6 rounded-2xl border-[3px] border-ink bg-mint p-5"><div className="flex flex-wrap items-center gap-2.5"><p className="text-lg font-bold">Protection created</p>{result.simulated ? <span className="rounded-full border-[3px] border-ink bg-blue px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest">Simulated order</span> : null}</div><p className="wm-numeral mt-2 break-all text-xs font-bold text-ink-soft">{result.hedgeId}</p>{result.simulated ? <p className="mt-3 text-sm leading-6">No on-chain order was placed. The full pipeline ran in simulation so you can see the whole flow without funding a wallet.</p> : result.txHash ? <a className="mt-3 inline-block text-sm font-bold underline decoration-[3px] underline-offset-4" href={`https://shannon-explorer.somnia.network/tx/${result.txHash}`} target="_blank" rel="noreferrer">View transaction ↗</a> : null}<a href={`/hedges/${result.hedgeId}`} className="wm-press mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-ink px-5 py-3.5 text-sm font-bold uppercase tracking-wide text-paper no-underline">View hedge</a></div> : null}
               </Panel>
-
-              <p className="mt-5 px-1 text-sm leading-6 text-ink-soft">
-                Watchman re-checks the market on-chain immediately before sending any order. If the
-                market stops trading, the quote is refused rather than filled at a stale price.
-              </p>
+              <p className="mt-5 px-1 text-sm leading-6 text-ink-soft">Watchman re-checks the market on-chain immediately before sending any order. If the market stops trading, the quote is refused rather than filled at a stale price.</p>
             </section>
           </div>
         </div>
       </main>
-      {fundingOpen ? (
-        <FundingPanel
-          onClose={() => setFundingOpen(false)}
-          onDevFaucet={faucetAvailable ? () => void fundWallet() : undefined}
-          devFaucetBusy={funding}
-        />
-      ) : null}
+      {fundingOpen ? <FundingPanel onClose={() => setFundingOpen(false)} onDevFaucet={faucetAvailable ? () => void fundWallet() : undefined} devFaucetBusy={funding} /> : null}
       <SiteFooter />
     </>
   );
