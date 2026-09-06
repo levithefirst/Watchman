@@ -21,8 +21,12 @@ let signerAddress: string | undefined = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const hedge = { create: vi.fn(), update: vi.fn(), findUnique: vi.fn() };
 const user = { upsert: vi.fn() };
 const exposure = { create: vi.fn() };
+const receipt = { create: vi.fn() };
+// Demo mode writes the hedge and its receipt in one transaction, so the
+// double has to hand the callback a client with the same surface.
+const $transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn({ hedge, receipt, user, exposure }));
 
-vi.mock("@watchman/db", () => ({ db: { user, exposure, hedge } }));
+vi.mock("@watchman/db", () => ({ db: { user, exposure, hedge, receipt, $transaction } }));
 
 vi.mock("@watchman/sdk", async () => {
   const actual = await vi.importActual<typeof import("@watchman/sdk")>("@watchman/sdk");
@@ -64,6 +68,8 @@ const okIntent = () => {
   hedge.create.mockResolvedValue({ id: "h1" });
   hedge.update.mockResolvedValue({ id: "h1" });
   hedge.findUnique.mockResolvedValue(null);
+  receipt.create.mockResolvedValue({ id: "r1" });
+  $transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn({ hedge, receipt, user, exposure }));
 };
 
 beforeEach(() => {
