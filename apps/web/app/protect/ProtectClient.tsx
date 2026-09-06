@@ -15,7 +15,10 @@ const CHAIN_ID = 50312;
 type Asset = "BTC" | "ETH";
 const ASSETS = ["BTC", "ETH"] as const satisfies readonly Asset[];
 type WindowSeconds = 900 | 3600;
-interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fillablePct: number; limitedBy: "none" | "budget" | "liquidity"; fullyFunded: boolean; reason?: string } } | null; balance?: number; liveExecutionAvailable?: boolean; faucetAvailable?: boolean; reason?: "no-liquidity" | "unavailable"; error?: string }
+interface QuoteResponse { quote: { marketId: string; symbol: string; asset: string; windowSeconds: number; expiry: number; upBid: number; downAsk: number; contractsAvailable: number; hedge: { protectedAmountUsd: number; contractsNeeded: number; contractsToBuy: number; premiumUsd: number; costPctOfProtected: number; potentialPayoutUsd: number; fillablePct: number; limitedBy: "none" | "budget" | "liquidity"; fullyFunded: boolean; reason?: string } } | null; balance?: TokenBalance; liveExecutionAvailable?: boolean; faucetAvailable?: boolean; reason?: "no-liquidity" | "unavailable"; error?: string }
+// Verified or unavailable, never silently zero. A failed lookup used to
+// render as "$0.00", telling testers they held nothing when they did not.
+type TokenBalance = { status: "ok"; value: number; token: string } | { status: "unavailable"; token: string };
 interface ProtectResponse { hedgeId?: string; txHash?: string | null; simulated?: boolean; replayed?: boolean; status?: string; error?: string }
 
 export default function ProtectClient(): React.ReactElement {
@@ -32,7 +35,7 @@ export default function ProtectClient(): React.ReactElement {
   // market carries more Down liquidity than the 15 minute one.
   const [windowSeconds, setWindowSeconds] = useState<WindowSeconds>(3600);
   const [maxPremiumUsd, setMaxPremiumUsd] = useState(150);
-  const [balance, setBalance] = useState<number>();
+  const [balance, setBalance] = useState<TokenBalance>();
   const [quote, setQuote] = useState<QuoteResponse["quote"]>();
   const [quoteError, setQuoteError] = useState<string>();
   // Separates "the venue had no usable market" from "Watchman could not reach
@@ -69,6 +72,19 @@ export default function ProtectClient(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
+  // Switching account or network makes everything account-shaped stale.
+  // The idempotency key matters most: carried across a switch, a retry would
+  // be replayed as the previous wallet's attempt and return its hedge. The
+  // balance is dropped back to "checking…" rather than left showing the old
+  // account's figure, and any previous result or error is cleared.
+  useEffect(() => {
+    attemptIdRef.current = undefined;
+    setBalance(undefined);
+    setResult(undefined);
+    setFailedTxHash(undefined);
+    setError(undefined);
+  }, [address, chainId]);
+
   useEffect(() => {
     const timer = window.setTimeout(async () => {
       setLoadingQuote(true); setQuoteError(undefined);
@@ -76,8 +92,11 @@ export default function ProtectClient(): React.ReactElement {
       try {
         const response = await fetch("/api/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(requestBody) });
         const data = (await response.json()) as QuoteResponse;
+        // The balance is resolved independently of the quote, so record it
+        // even when the venue is unreachable.
+        setBalance(data.balance);
         if (!response.ok) { setQuoteFailureKind(data.reason ?? "unavailable"); throw new Error(data.error ?? "Quote failed"); }
-        setQuote(data.quote ?? undefined); setBalance(data.balance); setLiveExecutionAvailable(Boolean(data.liveExecutionAvailable)); setFaucetAvailable(Boolean(data.faucetAvailable));
+        setQuote(data.quote ?? undefined); setLiveExecutionAvailable(Boolean(data.liveExecutionAvailable)); setFaucetAvailable(Boolean(data.faucetAvailable));
         if (data.quote) track("quote_received", { downAsk: data.quote.downAsk, contracts: data.quote.hedge.contractsToBuy, premiumUsd: data.quote.hedge.premiumUsd });
         if (data.error && !data.quote) { setQuoteFailureKind(data.reason ?? "no-liquidity"); setQuoteError(data.error); }
       } catch (cause) { setQuote(undefined); setQuoteError(cause instanceof Error ? cause.message : "Quote unavailable"); }
@@ -204,7 +223,7 @@ export default function ProtectClient(): React.ReactElement {
 
                 <BasisNote className="mt-8" />
 
-                {mode === "wallet" ? <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-paper-deep p-4"><span className="text-sm font-bold">tUSDC balance: <span className="wm-numeral">{balance === undefined ? "checking…" : money(balance)}</span></span><Button tone="white" size="sm" onClick={openFunding}>Fund with tUSDC</Button></div> : null}
+                {mode === "wallet" ? <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border-[3px] border-ink bg-paper-deep p-4"><span className="text-sm font-bold">tUSDC balance:{" "}{balance === undefined ? <span className="wm-numeral">checking…</span> : balance.status === "ok" ? <span className="wm-numeral">{money(balance.value)}</span> : <span title={`Token ${balance.token}`}>Balance unavailable. Watchman could not read your tUSDC balance, so this is not a zero.</span>}</span><Button tone="white" size="sm" onClick={openFunding}>Fund with tUSDC</Button></div> : null}
                 {fundMessage ? <p role="status" className="mt-3 rounded-xl border-[3px] border-ink bg-mint px-4 py-3 text-sm font-bold">{fundMessage}</p> : null}
                 {error ? <div role="alert" className="mt-4 rounded-xl border-[3px] border-ink bg-flame px-4 py-3.5 text-sm font-bold text-paper"><p>{error}</p>{failedTxHash ? <a className="wm-numeral mt-2 inline-block break-all text-xs underline decoration-[3px] underline-offset-4" href={`https://shannon-explorer.somnia.network/tx/${failedTxHash}`} target="_blank" rel="noreferrer noopener">View your transaction on Somnia ↗</a> : null}</div> : null}
               </Panel>
