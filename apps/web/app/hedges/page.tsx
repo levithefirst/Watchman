@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAccount } from "wagmi";
 import SiteHeader from "../components/SiteHeader";
 import SiteFooter from "../components/SiteFooter";
 import { Arrow, ButtonLink, Panel, StatusPill, Tag } from "../components/ui";
@@ -11,15 +12,16 @@ import { money, protectionLabel, shortDate, untilLabel } from "../components/for
 interface HedgeRow { id: string; asset: string; marketSymbol: string; protectionPct: string; exposureUsd: string; contractsFilled: string; premiumUsd: string; expiry: string; status: string; txHash: string | null; receipt: { id: string } | null }
 
 export default function HedgesPage(): React.ReactElement {
-  const [wallet, setWallet] = useState("demo");
+  // Read the account from wagmi, the same source /protect executes against.
+  // This used to read a "watchman.wallet" localStorage key written by the old
+  // raw window.ethereum code; the RainbowKit migration stopped writing it, so
+  // the page silently fell back to the demo account and a real wallet's
+  // hedges were invisible here.
+  const { address, isConnected } = useAccount();
+  const wallet = isConnected && address ? address.toLowerCase() : "demo";
   const [hedges, setHedges] = useState<HedgeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("watchman.wallet");
-    if (stored) setWallet(stored);
-  }, []);
 
   useEffect(() => {
     setLoading(true);

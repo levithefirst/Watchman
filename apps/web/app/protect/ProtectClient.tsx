@@ -28,6 +28,8 @@ export default function ProtectClient(): React.ReactElement {
   const [asset, setAsset] = useState<Asset>("BTC");
   const [exposureUsd, setExposureUsd] = useState(10000);
   const [protectionPct, setProtectionPct] = useState(50);
+  // BTC / 1 hour is the demo path judges are walked through, and the hour
+  // market carries more Down liquidity than the 15 minute one.
   const [windowSeconds, setWindowSeconds] = useState<WindowSeconds>(3600);
   const [maxPremiumUsd, setMaxPremiumUsd] = useState(150);
   const [balance, setBalance] = useState<number>();
@@ -109,7 +111,12 @@ export default function ProtectClient(): React.ReactElement {
     const requestId = attemptIdRef.current ?? crypto.randomUUID();
     attemptIdRef.current = requestId;
     try {
-      const response = await fetch("/api/protect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...requestBody, demo: mode === "demo", requestId }) });
+      // Send what the badge above promises, not just the mode toggle.
+      // Connecting a wallet flips mode to "wallet", but a deployment with no
+      // execution signer can only simulate. Sending demo:false there asked the
+      // server for a live order it could never authorise, and the refusal was
+      // worded as a wallet mismatch even though the wallet was irrelevant.
+      const response = await fetch("/api/protect", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...requestBody, demo: willSimulate, requestId }) });
       const data = (await response.json()) as ProtectResponse;
       if (!response.ok) {
         // The server tells us whether funds actually moved. Keep the key so a

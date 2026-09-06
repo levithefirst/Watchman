@@ -57,7 +57,26 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const executionContext = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
     const executionWallet = executionContext.walletAddress?.toLowerCase();
-    if (!isDemo && (!raw.wallet || !executionWallet || normaliseWallet(raw.wallet) !== executionWallet)) return fail(403, "Wallet mode requires the connected wallet to match the configured execution signer.");
+    // The authorisation boundary is unchanged: a live order is only ever
+    // signed for the wallet that owns the server's key. What changed is that
+    // the three distinct reasons it can refuse now say which one applies,
+    // instead of all blaming the connected wallet.
+    if (!isDemo) {
+      if (!executionWallet) {
+        // No PRIVATE_KEY on this deployment, so there is no signer to match
+        // and no wallet the user could connect that would work.
+        return fail(403, "Live execution is not enabled on this deployment, so no on-chain order can be placed. Switch to Demo mode to run the full flow.");
+      }
+      if (!raw.wallet) {
+        return fail(403, "Connect a wallet before requesting a live order.");
+      }
+      if (normaliseWallet(raw.wallet) !== executionWallet) {
+        // Name the address that would work. Truncated: it is a public
+        // address, but there is no reason to print it in full.
+        const expected = `${executionWallet.slice(0, 6)}…${executionWallet.slice(-4)}`;
+        return fail(403, `Live orders are signed by this deployment's own wallet (${expected}). Connect that wallet, or use Demo mode.`);
+      }
+    }
 
     const markets = await discoverTradingMarkets(quoteContext, raw.asset);
     const selected = markets.find((market) => asBinary(market.market).marketId.toLowerCase() === quote.marketId.toLowerCase());

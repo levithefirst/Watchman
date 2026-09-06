@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAccount } from "wagmi";
 import SiteHeader from "../components/SiteHeader";
 import SiteFooter from "../components/SiteFooter";
 import { Arrow, BasisNote, Button, ButtonLink, Panel, Tag } from "../components/ui";
@@ -8,9 +9,14 @@ import { track } from "../components/analytics";
 import { money } from "../components/format";
 
 export default function PolicyPage(): React.ReactElement {
+  // Same wagmi source as /protect and /hedges. This previously read a
+  // "watchman.wallet" localStorage key that the RainbowKit migration
+  // stopped writing, so every policy was saved to the demo account even
+  // with a wallet connected.
+  const { address, isConnected } = useAccount();
   const [asset, setAsset] = useState<"BTC" | "ETH">("BTC");
   const [pct, setPct] = useState(50);
-  const [windowSeconds, setWindowSeconds] = useState<900 | 3600>(900);
+  const [windowSeconds, setWindowSeconds] = useState<900 | 3600>(3600);
   const [premium, setPremium] = useState(150);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -20,7 +26,7 @@ export default function PolicyPage(): React.ReactElement {
     setSaving(true);
     setError(undefined);
     try {
-      const wallet = window.localStorage.getItem("watchman.wallet") ?? undefined;
+      const wallet = isConnected && address ? address.toLowerCase() : undefined;
       const response = await fetch("/api/policies", {
         method: "POST",
         headers: { "content-type": "application/json" },

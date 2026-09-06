@@ -15,6 +15,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------- test doubles
 const placeDownIOC = vi.fn();
+// The deployment's execution signer. `undefined` models a deployment with
+// no PRIVATE_KEY, which is what production actually was during the bug.
+let signerAddress: string | undefined = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const hedge = { create: vi.fn(), update: vi.fn(), findUnique: vi.fn() };
 const user = { upsert: vi.fn() };
 const exposure = { create: vi.fn() };
@@ -34,7 +37,8 @@ vi.mock("@watchman/sdk", async () => {
         },
         close: vi.fn(async () => undefined),
       },
-      walletAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      // Mirrors the real SDK: no PRIVATE_KEY means no signer address at all.
+      walletAddress: signerAddress,
     })),
     cheapestDownQuote: vi.fn(async () => ({
       marketId: "0xmarket", symbol: "BTC-DOWN-15M", asset: "BTC", windowSeconds: 900,
@@ -65,6 +69,7 @@ const okIntent = () => {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.PRIVATE_KEY = "0x" + "1".repeat(64);
+  signerAddress = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   okIntent();
 });
 
@@ -203,5 +208,66 @@ describe("/api/protect execution boundary", () => {
     expect(executing).toBeGreaterThanOrEqual(0);
     expect(open).toBeGreaterThan(executing);
     expect(hedge.update.mock.invocationCallOrder[executing]).toBeLessThan(placeDownIOC.mock.invocationCallOrder[0]);
+  });
+});
+
+/**
+ * The reported demo bug and the boundary it must not break.
+ *
+ * A tester using one wallet throughout still saw "Wallet mode requires the
+ * connected wallet to match the configured execution signer". The wallet was
+ * never the problem: the deployment had no PRIVATE_KEY, so there was no signer
+ * to match, while the page had already flipped to wallet mode on connect and
+ * sent demo:false for an order that could never be authorised.
+ */
+describe("/api/protect wallet authorisation", () => {
+  it("allows the matching wallet, in any address casing", async () => {
+    placeDownIOC.mockResolvedValue({ hash: "0xtx", filled: 300, price: 0.4 });
+    // Checksummed from the browser, lowercase from the signer.
+    const res = await call({ wallet: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
+    expect(res.status).toBe(200);
+    expect(placeDownIOC).toHaveBeenCalled();
+  });
+
+  it("still refuses a DIFFERENT wallet: the safety boundary is intact", async () => {
+    const res = await call({ wallet: "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" });
+    expect(res.status).toBe(403);
+    expect(placeDownIOC).not.toHaveBeenCalled();
+    const json = await res.json();
+    // And it now names the wallet that would work, instead of a bare refusal.
+    expect(json.error).toMatch(/0xaaaa…aaaa/i);
+  });
+
+  it("still refuses a live order with no wallet connected", async () => {
+    const res = await call({ wallet: undefined });
+    expect(res.status).toBe(403);
+    expect(placeDownIOC).not.toHaveBeenCalled();
+  });
+
+  it("says live execution is disabled when the deployment has no signer", async () => {
+    // Exactly the production condition behind the screenshot.
+    signerAddress = undefined;
+    delete process.env.PRIVATE_KEY;
+    const res = await call({ wallet: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    // It must not blame the user's wallet, because the wallet is irrelevant.
+    expect(json.error).toMatch(/not enabled on this deployment/i);
+    expect(json.error).toMatch(/demo mode/i);
+    expect(json.error).not.toMatch(/match/i);
+  });
+
+  it("simulates instead of refusing when the page knows it cannot execute live", async () => {
+    // What the client now sends once the quote reports liveExecutionAvailable
+    // false: demo:true, matching the "Simulated order" badge on screen.
+    signerAddress = undefined;
+    delete process.env.PRIVATE_KEY;
+    const res = await call({ demo: true, wallet: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.simulated).toBe(true);
+    expect(json.txHash).toBeNull();
+    // No on-chain order, and nothing pretends otherwise.
+    expect(placeDownIOC).not.toHaveBeenCalled();
   });
 });
