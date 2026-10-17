@@ -6,13 +6,15 @@
     "watchPatterns": [
       "/apps/agent/**",
       "/packages/db/**",
-      "/packages/sdk/**",
+      "/packages/core/**",
       "/pnpm-lock.yaml",
       "/package.json"
     ]
   },
   "deploy": {
-    "preDeployCommand": ["pnpm --filter @watchman/db exec prisma migrate deploy"],
+    "preDeployCommand": [
+      "pnpm --filter @watchman/db exec prisma migrate deploy"
+    ],
     "startCommand": "pnpm --filter @watchman/agent start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10

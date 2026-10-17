@@ -1,85 +1,70 @@
 # Deploying Watchman
 
-> **Canonical live deployment:** https://watchman-beta.vercel.app/
+Three parts share one Neon Postgres database:
 
-Watchman is two services sharing one Neon Postgres database:
+- `apps/web` on Vercel (the product)
+- `apps/agent` on Railway (the live monitor)
+- `plugin/` uploaded to the PayBox developer portal (the hackathon entry)
 
-- `apps/web` on Vercel, used by judges.
-- `apps/agent` on Railway, the continuous settlement/policy worker.
+## 1. Database
 
-## 0. Database
-
-Create a Neon Postgres project and copy its connection string as `DATABASE_URL`.
-
-## 1. Vercel
-
-Import the `Watchman` repository and set:
-
-| Setting | Value |
-|---|---|
-| Framework | Next.js |
-| Root Directory | `apps/web` |
-| Install Command | `pnpm install --frozen-lockfile` |
-| Build Command | `pnpm --filter @watchman/web build` |
-
-Add `DATABASE_URL`. Leave `PRIVATE_KEY` unset for the recommended judge/demo setup. `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is optional.
-
-The live judge path is:
-
-1. Open https://watchman-beta.vercel.app/
-2. Go to **Protect**.
-3. Use the default **BTC / 1 hour / Demo mode**.
-4. Review the live quote and the actual liquidity constraint.
-5. Click **Protect Position**.
-6. Open **Hedges** and then the receipt.
-
-## 2. Railway
-
-Deploy the repository as an always-on service using the root `railway.json` configuration.
-
-The service should use:
-
-- Build: `pnpm --filter @watchman/agent build`
-- Pre-deploy: `pnpm --filter @watchman/db exec prisma migrate deploy`
-- Start: `pnpm --filter @watchman/agent start`
-
-Add the same `DATABASE_URL`. `PRIVATE_KEY` is optional and controls whether live testnet orders can execute.
-
-Do not turn the agent into a cron job. It must remain running so live hedges can be reconciled and receipts generated after real market settlement.
-
-## 3. Verify
-
-After deployment:
+Use the existing Neon `DATABASE_URL`. The migration `20261017140000_paybox_protection` drops the old DreamDEX tables and creates `Protection`, `AuditEvent` and `MonitorHeartbeat`. It runs automatically as Railway's pre-deploy step, or by hand:
 
 ```bash
-pnpm typecheck
-pnpm test
-pnpm build
+DATABASE_URL=... pnpm db:migrate:deploy
 ```
 
-For the Vercel Prisma deployment, confirm the query engine is traced into the protect route:
+## 2. Vercel (apps/web)
+
+Keep the existing project settings (root `apps/web`, `pnpm install --frozen-lockfile`, `pnpm --filter @watchman/web build`).
+
+| Variable | Demo only | Live |
+|---|---|---|
+| `DATABASE_URL` | required | required |
+| `PAYBOX_API_KEY` | unset | the Watchman agent key |
+| `WATCHMAN_OPERATOR_KEY` | unset | a long random string |
+
+Do **not** put `PAYBOX_SIGNING_KEY` on Vercel. The web app only lists grants, checks readiness and arms; it never signs.
+
+## 3. Railway (apps/agent)
+
+`railway.json` already configures build, pre-deploy migration and start. Set `DATABASE_URL`, and for live execution `PAYBOX_API_KEY` and `PAYBOX_SIGNING_KEY`. Keep it always-on: it is the monitor.
+
+The UI shows **Monitoring interrupted** whenever the monitor's heartbeat is older than 60 seconds, so a stopped worker is never silent.
+
+## 4. PayBox setup for live mode
+
+1. In the PayBox app, create an agent for Watchman and grant it **one Base wallet**. Choose the approval mode you want: *autonomous* lets PayBox clear the swap within the grant; any other mode means PayBox asks for your passkey when the protection triggers, and Watchman shows that state.
+2. Copy its `pbx_live_...` key into `PAYBOX_API_KEY`.
+3. On any machine: `npx @paybox-sh/sdk login --key pbx_live_...` then `npx @paybox-sh/sdk connect`, and approve the emoji code in PayBox. Copy the paired `signingKey` from `~/.config/paybox/config.json` into Railway's `PAYBOX_SIGNING_KEY`. The key and signer are a matched pair; re-pair if you rotate the API key.
+4. Fund the wallet with ETH on Base.
+5. Open `/operator` on the site, enter `WATCHMAN_OPERATOR_KEY`. The header switches to **Live · Base**. Create, confirm and grant as usual. Watchman confirms the grant with PayBox, reads the Base balance, runs PayBox's readiness check and captures a corroborated reference price before arming.
+
+## 5. PayBox plugin (hackathon entry)
 
 ```bash
-cd apps/web && pnpm build
-grep -c libquery_engine .next/server/app/api/protect/route.js.nft.json
+cd plugin
+pnpm install --frozen-lockfile   # Node 24, pnpm 11.11.0
+pnpm test                        # typecheck, two identical builds, official conformance
 ```
 
-A result of `1` or more confirms the native Prisma engine is included.
+Upload `plugin/dist/plugin.mjs` in the developer portal. Under **Test & configure → network hosts** add:
 
-## Demo mode
+- `api.coinbase.com`
+- `api.kraken.com`
+- `watchman-beta.vercel.app`
 
-Demo mode is the recommended submission path. It uses the live DreamDEX quoting and sizing logic, records a simulated hedge, and creates a clearly labelled computed demo receipt using the existing effectiveness engine. It does not place an on-chain order, fabricate a transaction hash, or claim an on-chain settlement.
+No secrets are needed. Optionally set the variable `WATCHMAN_URL` if the site moves. Run the hosted checks, accept the terms and select **Submit Project** before 8:00 PM ET on Saturday, October 17.
 
-The demo receipt uses a visible `-3.00%` scenario so judges can inspect the complete attribution flow without waiting for a market to resolve.
+## Verify
 
-## Real execution (optional)
-
-For live testnet execution, configure a dedicated funded test wallet and set `PRIVATE_KEY` in both Vercel and Railway. Watchman still re-checks the market on-chain immediately before sending an order and preserves the existing persist-before-execute, idempotency, reconciliation, and redemption safeguards.
+```bash
+pnpm typecheck && pnpm test && pnpm build
+cd apps/web && grep -c libquery_engine .next/server/app/api/protection/route.js.nft.json   # ≥ 1: Prisma engine traced
+```
 
 ## Troubleshooting
 
-- **Quotes do not populate:** DreamDEX/Somnia may be temporarily unreachable from the deployment region. Retry and check the quote error state.
-- **Hedges have no receipts in live mode:** confirm the Railway worker is running and both services use the same `DATABASE_URL`.
-- **A hedge is stuck in `EXECUTING`:** do not clear it manually. The worker reconciles the row against the chain and only changes it when the outcome is determinable.
-- **Prisma query engine error on Vercel:** rebuild and confirm `libquery_engine` appears in the route's NFT trace as shown above.
-- **Faucet disabled in production:** expected. Watchman does not operate a production faucet; use the supported Somnia testnet funding route before enabling live execution.
+- **"Watchman doesn't have access to a wallet yet"**: the agent key has no wallet grant. Use the *Open PayBox* link, grant a Base wallet, then *check again*.
+- **Stuck on "Signature required to continue"**: the monitor has no `PAYBOX_SIGNING_KEY`, or the signer belongs to a different client. Finish the swap in PayBox; Watchman keeps following the same request and never signs twice.
+- **"Stopped for review"**: Watchman couldn't prove what happened (an unconfirmed submission, or a confirmed transaction it couldn't verify). It will not act again on that protection. Check PayBox activity and Basescan.

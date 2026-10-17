@@ -232,10 +232,17 @@ function failure(p: ProtectionRecord): ProtectionView["failure"] {
     verification_mismatch: "Check the transaction in PayBox or on Basescan. Watchman will not act again on this protection.",
     exceeded_authority: "Revoke Watchman's grant in PayBox and review the transaction.",
   };
+  const title = FAILURE_TITLES[code] ?? "Protection could not execute";
+  let message = p.failureMessage ?? "Watchman stopped this protection.";
+  // The title already says it; don't make the user read it twice.
+  if (message.startsWith(title)) {
+    const rest = message.slice(title.length).replace(/^[:.]?\s*/, "");
+    message = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : message;
+  }
   return {
     code,
-    title: FAILURE_TITLES[code] ?? "Protection could not execute",
-    message: p.failureMessage ?? "Watchman stopped this protection.",
+    title,
+    message,
     fundsMoved,
     nextAction: next[code] ?? "Create a new protection when you're ready.",
     requestId: p.payboxRequestId,

@@ -1,41 +1,24 @@
-# Demo video script (60–90 seconds)
+# Demo video (75 seconds)
 
-Read this while screen-recording the live Vercel deployment. Timings are approximate — pause naturally, don't rush the numbers. Bracketed lines are actions, not speech.
+Story: **Intent → Permission → Protection → Execution → Proof.**
 
----
+Record https://watchman-beta.vercel.app in a fresh browser window at 1280×800 (or a phone). Demo mode needs no wallet. Start on the empty Create screen.
 
-**[0:00 – 0:10] — Landing page**
+| Time | Screen | Do | Say |
+|---|---|---|---|
+| 0:00 | Create | Type *If ETH drops 10%, sell 25% of my ETH to USDC.* | "I want to protect my ETH while I'm away, without handing an AI my keys." |
+| 0:08 | Create | Click **Create Protection** | "Watchman compiles that sentence into a fixed policy. No model in the loop: anything outside one ETH exit is rejected." |
+| 0:14 | Confirm | Pause on WHEN / THEN / TO / ON | "This is exactly what it will do. Nothing is live yet." Click **Arm Protection**. |
+| 0:20 | Permission | Let the CAN / CANNOT columns sit for two seconds | "Here's the point. Watchman can sell up to 25% of my ETH for USDC on Base, only on a 10% drop. It can't buy, transfer, raise its limit, or touch my key. PayBox holds that authority." |
+| 0:32 | Permission | Click **Grant Permission** | "PayBox grants Watchman this one action, revocable anytime." |
+| 0:36 | Monitoring | Point at reference, trigger, distance | "Now it watches. Reference captured, trigger set. I can walk away." |
+| 0:42 | Monitoring | Click **Simulate market drop** | "Let's crash the market." |
+| 0:48 | Triggered | Let the steps advance | "ETH crossed the trigger. Watchman asks PayBox for the one swap the policy allows. PayBox signs it inside its own custody." |
+| 0:58 | Complete | Scroll the receipt and audit trail | "Executed and verified: ETH sold, USDC received, execution price, and every step on the record. Watchman never claims success until it's verified." |
+| 1:08 | Complete | End on the receipt | "Watchman protects. PayBox authorizes. You stay in control." |
 
-> "Holding crypto through a volatile window means picking between selling your position, or riding out the drawdown. Watchman turns short-duration Event Contracts on DreamDEX into portfolio insurance instead — you keep the position, and Watchman hedges the downside for you."
+Notes
 
-**[0:10 – 0:15] — Click "Try Demo — $10k BTC, 50%, 15m"**
-
-> "One click — no wallet, no funding — drops me straight into a real scenario: ten thousand dollars of BTC, fifty percent protection, for the next fifteen minutes."
-
-**[0:15 – 0:35] — Point at the live quote panel**
-
-> "This quote is live — it's pulling the actual cheapest Down contract on DreamDEX right now: the price, how many contracts, the premium, and the potential payout. And right here —" *(point at the badge)* "— it tells me straight up this is a simulated order, so I know exactly what I'm looking at before I click anything."
-
-**[0:35 – 0:45] — Click "Protect Position"**
-
-> "I'll protect the position. Watchman sizes the hedge against my premium budget and creates it."
-
-**[0:45 – 1:00] — Open the hedge / /hedges page**
-
-> "Every hedge Watchman opens is tracked here — exposure, protection, premium, expiry — until the market resolves."
-
-**[1:00 – 1:20] — Open the Hedge Receipt**
-
-> "And once the window closes, this is the payoff: the Hedge Receipt. One sentence tells me exactly what happened — how far the market actually moved, and what the hedge paid out. Below that: unhedged loss versus hedged loss, net protection, and efficiency. No hand-waving about basis risk — the gap between a perfect put and a binary contract is right there in the numbers."
-
-**[1:20 – 1:30] — Close**
-
-> "That's the whole loop — quote, hedge, settle, receipt — running end to end on real DreamDEX markets. That's Watchman."
-
----
-
-## Notes for recording
-
-- A hedge only produces a receipt once its window has actually closed and the market resolved, so a hedge created live during recording will still be OPEN. If it hasn't resolved by recording time, either: (a) pre-create a hedge earlier and have its receipt ready to open at the 1:00 mark, or (b) cut from "Protect Position" straight to a previously-generated receipt and say "and here's one from earlier today" instead of waiting live.
-- Keep the mouse deliberate — pause on the quote numbers and the receipt numbers for at least a full second each so viewers can actually read them.
-- If recording with `PRIVATE_KEY` configured and a funded wallet, you can swap step 3 to show the "Live testnet execution" badge and a real transaction link instead — adjust the line at 0:15–0:35 to say "and this one's a real testnet order" instead of "simulated."
+- If ETH is already near the trigger, nothing happens until you click **Simulate market drop**; the simulated market only drifts within about 1% otherwise.
+- The **Demo** pill in the header is intentional. Say it if asked: the demo uses the same engine and screens as live, with a simulated market and simulated PayBox settlement, and never shows a fake transaction hash.
+- Optional 10-second cut: show the plugin in PayBox calling `compile_protection` on the same sentence.

@@ -12,14 +12,14 @@ const url = process.env.TEST_DATABASE_URL;
 const ETH = 1_000_000_000_000_000_000n;
 
 describe.skipIf(!url)("PrismaStore on Postgres", () => {
-  const db = new PrismaClient({ datasources: { db: { url } } });
+  const db = url ? new PrismaClient({ datasources: { db: { url } } }) : (null as unknown as PrismaClient);
   const store = new PrismaStore(db);
 
   beforeAll(async () => {
     await db.auditEvent.deleteMany();
     await db.protection.deleteMany();
   });
-  afterAll(async () => db.$disconnect());
+  afterAll(async () => db?.$disconnect());
 
   async function armedLive(ownerId: string) {
     const terms = { asset: "ETH", destinationAsset: "USDC", chain: "base", dropBps: 1000, sellBps: 2500 } as const;

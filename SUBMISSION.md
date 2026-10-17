@@ -1,87 +1,34 @@
-# DoraHacks submission — copy/paste text
+# Submission text
 
-Everything below is written to be pasted directly into the submission form. Add the final demo-video URL when the recording is ready.
+## Name
 
----
+Watchman
 
-## Title
+## Tagline
 
-```
-Watchman — Short-Duration Portfolio Insurance on DreamDEX
-```
+Protect your position while you're away. One scoped exit rule, enforced by PayBox, without ever touching your keys.
 
-## Tagline / short description
+## Description
 
-```
-Watchman is portfolio insurance for DreamDEX Event Contracts that tells you whether the hedge actually offset the loss, not another Up/Down trading UI.
-```
+Everyone knows they should protect a position. Nobody wants to watch charts all day, hand a bot their private key, or approve every move by hand.
 
-## Long description
+Watchman turns one sentence, "If ETH drops 10%, sell 25% of my ETH to USDC", into a fixed, deterministic policy and shows exactly what it can and cannot do. The user grants that single authority through PayBox. Watchman watches ETH on Coinbase and Kraken, and only when the trigger really crosses does it ask PayBox for the one swap the policy allows: native ETH to USDC on Base, exact amount, never above the limit fixed at arming. It follows the PayBox request to settlement, verifies the transaction on Base, and hands back a receipt with a full audit trail.
 
-```
-Problem
+PayBox is why this can exist. Without it, automation means private keys, unrestricted access, or approving every action. With PayBox, the wallet key stays in PayBox's custody, the grant is revocable, and PayBox checks every request against it. Watchman is the protection layer; PayBox is the authority layer.
 
-Holding BTC or ETH through a volatile window forces a bad tradeoff: sell the position or absorb the drawdown. Perp hedges add funding and liquidation risk, while short-dated on-chain options are not readily available for ordinary holders.
+Built to be trusted with money:
 
-Solution
+- The policy is a strict grammar, not an LLM. Unsupported instructions are rejected with the reason.
+- An armed policy is frozen. Every PayBox parameter is derived from it.
+- Stale, missing or disputed prices pause the protection instead of selling.
+- Exactly one PayBox request per trigger, enforced by guarded database transitions and tested with 20 concurrent workers. Unknown outcomes are held for review, never resubmitted.
+- Nothing is called complete until Watchman verifies the Base receipt: transaction succeeded, USDC arrived, ETH sold within the authority.
+- Every PayBox state, from passkey approval to pending signature to funding, is shown honestly.
 
-DreamDEX already lists short-duration binary Event Contracts on Somnia that can hedge downside. The raw primitive still leaves someone to find the right market, size the hedge against real exposure and liquidity, execute before the window closes, track settlement, and work out what the hedge actually did.
+The Watchman PayBox plugin brings the same policy engine to any PayBox agent: compile a protection, check its trigger, and on a crossed trigger get the exact `request_swap` to run. It never arms or executes anything itself.
 
-Watchman is that risk-management layer. Give it an exposure, a protection percentage, and a premium budget, and it:
+## Links
 
-1. Finds the cheapest currently-tradeable Down Event Contract
-2. Sizes the hedge against the premium budget and live liquidity
-3. Executes an IOC order, or simulates it in Demo mode
-4. Tracks live settlement and redemption through the existing worker
-5. Produces a Hedge Receipt showing exposure, premium, actual move, unhedged P&L, hedge payout, hedged P&L, gross loss offset, loss offset percentage, net hedge contribution, and overshoot
-
-Why it is different
-
-Watchman is a portfolio-insurance layer, not a prediction bot and not another Up/Down trading interface. It buys Down contracts to offset an existing long and makes the result measurable.
-
-A binary Event Contract is not a put. Its payout is fixed, so it can under-cover or over-cover the actual loss. Watchman puts that basis risk directly on the receipt instead of hiding it behind a single protection number.
-
-The sizing is also honest. If a user requests $5,000 of protection but the market can currently fill only $200, Watchman says so and limits the executable size rather than pretending the full amount is available.
-
-Best demo path
-
-1. Open https://watchman-beta.vercel.app/
-2. Go to Protect. The default demo is BTC / 1 hour.
-3. Observe the live quote and liquidity constraint.
-4. Click Protect Position in Demo mode.
-5. Open Hedges and select the created demo hedge.
-6. Open the full receipt.
-7. Compare unhedged P&L with hedged P&L and inspect loss offset, net hedge contribution, and overshoot where applicable.
-
-Watchman does not just show that a hedge was bought. It shows what the hedge actually protected.
-
-Demo mode is clearly labelled. The demo hedge uses the real quote and sizing result, then runs the existing effectiveness engine against a visible -3.00% scenario so judges do not have to wait for a market to resolve. No fake fill, transaction hash, or on-chain settlement is presented as real.
-```
-
-## Tech stack
-
-```
-Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS v4,
-Prisma + Neon Postgres, @somnia-chain/markets-sdk, viem,
-a standalone Node/TypeScript settlement worker,
-deployed on Vercel (web) + Railway (agent),
-Somnia Shannon testnet (chain 50312)
-```
-
-## Demo link
-
-```
-https://watchman-beta.vercel.app/
-```
-
-## Demo video link
-
-```
-PASTE FINAL 2–3 MINUTE VIDEO URL HERE AFTER RECORDING WITH DEMO_SCRIPT.md.
-```
-
-## Repository
-
-```
-https://github.com/levithefirst/Watchman
-```
+- App: https://watchman-beta.vercel.app
+- Code: https://github.com/levithefirst/Watchman
+- Demo video: (add the X post URL)

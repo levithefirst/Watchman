@@ -482,3 +482,16 @@ describe("demo mode runs the same engine", () => {
     expect(seen).toEqual(new Set(["ARMED", "PENDING_SIGNATURE", "SETTLING", "VERIFYING", "COMPLETED"]));
   });
 });
+
+describe("view copy", () => {
+  it("never repeats the failure title inside its message", async () => {
+    const { buildView } = await import("../src/view.js");
+    await armed();
+    price = 350_000;
+    paybox.submitResult = { kind: "submitted", snapshot: paybox.snap("denied", { error: "amount exceeds the grant's daily limit" }) };
+    const p = (await run())!;
+    const v = buildView(p, store.eventsFor("p1"), { now: clock.now(), monitorSeenAt: null, canSign: true });
+    expect(v.failure).toMatchObject({ title: "PayBox did not authorize this action", fundsMoved: "No ETH was sold." });
+    expect(v.failure!.message).toBe("Amount exceeds the grant's daily limit. No swap took place.");
+  });
+});

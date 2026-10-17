@@ -305,13 +305,14 @@ async function applySnapshot(p: ProtectionRecord, s: RequestSnapshot, guard: Par
     txHash: s.txHash ?? p.txHash,
   };
 
+  const reason = s.error?.trim().replace(/[.\s]+$/, "");
   if (s.status === "denied") {
-    return fail(p, ctx, guard, "paybox_denied", `PayBox did not authorize this action${s.error ? `: ${s.error}` : "."} No swap took place.`, "no", base);
+    return fail(p, ctx, guard, "paybox_denied", `PayBox did not authorize this action${reason ? `: ${reason}.` : "."} No swap took place.`, "no", base);
   }
   if (s.status === "error") {
     const message = base.txHash
-      ? `The swap transaction failed or was dropped${s.error ? ` (${s.error})` : ""}. PayBox reports no ETH was swapped; network fees may have been spent.`
-      : `PayBox couldn't complete the swap${s.error ? `: ${s.error}` : "."} No transaction was sent.`;
+      ? `The swap transaction failed or was dropped${reason ? ` (${reason})` : ""}. PayBox reports no ETH was swapped; network fees may have been spent.`
+      : `PayBox couldn't complete the swap${reason ? `: ${reason}.` : "."} No transaction was sent.`;
     return fail(p, ctx, guard, "paybox_error", message, "no", base);
   }
 

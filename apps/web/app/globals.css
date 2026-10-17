@@ -239,6 +239,9 @@ a { color: inherit; }
 .btn-danger-solid:hover:not(:disabled) { opacity: 0.9; }
 
 .link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--accent);
   text-decoration: none;
   font-weight: 550;

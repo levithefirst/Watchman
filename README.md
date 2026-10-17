@@ -1,139 +1,64 @@
 # Watchman
 
-**Watchman is the risk-management layer for DreamDEX Event Contracts. Keep the position, buy the downside event, and see exactly what the hedge actually did.**
+**Protect your position while you're away.**
 
-> A binary Event Contract is not a put. It pays its full face value or nothing, so it will rarely equal your actual loss. Watchman sizes that trade against a real premium budget and live liquidity, then puts the gap — the basis difference — on the receipt instead of hiding it.
+You tell Watchman one rule: *"If ETH drops 10%, sell 25% of my ETH to USDC."* Watchman compiles it into a fixed policy and shows exactly what it can and cannot do. You grant it that one authority through PayBox. Then it watches. When ETH crosses the trigger, Watchman asks PayBox for the one swap the policy allows, follows the request to settlement, verifies the result on Base, and gives you a receipt with a full audit trail.
 
-## Problem → Solution
+Watchman never holds your private key. PayBox does, and PayBox enforces the grant.
 
-Holding BTC or ETH through a volatile window (a CPI print, an unlock, the next 15 minutes) usually forces a bad tradeoff: sell and eat the tax/opportunity cost, or hold and eat the drawdown — perp hedges add funding costs and liquidation risk, and real options aren't available to most on-chain holders. DreamDEX already lists short-duration binary Event Contracts on Somnia that could hedge this, but they're a raw trading primitive: someone still has to find the right market, size it against their actual exposure, execute before the window closes, and track what happened to their money. **Watchman is that missing layer** — give it an exposure, a protection percentage, and a premium budget, and it finds the cheapest tradeable Down contract, sizes the hedge, executes the order, watches the market resolve, redeems the winning side, and hands back a Hedge Receipt showing exactly what the hedge did to the position's P&L, basis risk stated up front rather than buried in a footnote.
+Live: https://watchman-beta.vercel.app
 
-## Why this is different
+## Why PayBox
 
-Most hackathon submissions against an event-contract market either (a) build another trading UI for the raw contracts, or (b) build a generic "AI trading bot" that predicts direction. Watchman does neither:
+Without PayBox, an automated stop-loss needs your private key, unrestricted wallet access, or your approval every time. PayBox is the middle ground: a revocable grant on one wallet, checked by PayBox on every request, signed inside PayBox's MPC custody. Watchman is the protection layer. PayBox is the authority layer.
 
-- **It's not a prediction product.** Watchman never bets on direction — it only ever buys the Down side to offset an existing long, sized to a protection percentage the user chooses. The "alpha" is risk management, not forecasting.
-- **It's honest about basis risk.** A binary Event Contract pays a fixed amount, not a variable amount proportional to loss like a real put. Every Hedge Receipt shows unhedged P&L next to hedged P&L and states the efficiency gap explicitly, instead of presenting the hedge as a perfect offset.
-- **It closes the loop end to end.** Quote → size → execute → settle → redeem → receipt is one pipeline with one data model (`User → Exposure → Hedge → Receipt`), not a UI bolted onto someone else's order book. The settlement worker resolves against the on-chain market state (`getMarketOnchain(marketId).status`), not a cached indexer row, because pool addresses on DreamDEX are recycled across markets.
-- **Judges can run the entire flow with zero setup.** No wallet, no faucet, no funding. Demo mode runs the real quoting and sizing logic against live DreamDEX markets and only skips the final on-chain write, so the numbers are real even when the transaction is simulated.
+## How it works
 
-## Best demo path (4 steps)
-
-1. **Click "Try demo"** on the landing page. This goes straight to `/protect`, pre-filled with a $10,000 BTC exposure, 50% protection, and a 1-hour window in Demo mode. No wallet, no funding.
-2. **Review the live quote and click "Protect Position."** The quote panel is pulling a real DreamDEX Down market (current Down price, contracts, premium, potential payout). The amber **"Simulated order"** badge confirms no on-chain transaction will fire.
-3. **Open the created hedge** from the confirmation card, or visit `/hedges` to see it being tracked.
-4. **Open the Hedge Receipt** once the window resolves and the settlement agent processes it — "What the hedge actually did" states the result in one sentence, followed by exposure, premium, actual move, payout, unhedged vs. hedged P&L, net protection, and efficiency.
-
-Optional extras to show: `/policy` lets you hand Watchman a standing rule the agent evaluates automatically, and switching to Wallet mode with `PRIVATE_KEY` configured flips the badge to **"Live testnet execution"** and places a real IOC order.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph web["apps/web — Next.js 15"]
-        UI["/protect, /hedges, /receipt/[id]"]
-        API["/api/quote, /api/protect,\n/api/hedges, /api/policies"]
-    end
-
-    subgraph sdk["packages/sdk"]
-        Discover["market discovery +\nTrading-status gate"]
-        Quote["cheapest Down quote"]
-        Size["hedge sizing\n(premium + liquidity caps)"]
-        Exec["IOC execution\n(or simulation)"]
-        Redeem["explicit redemption"]
-    end
-
-    subgraph db["packages/db — Prisma"]
-        Schema["User → Exposure → Hedge → Receipt\n+ Policy"]
-    end
-
-    subgraph agent["apps/agent — Railway worker"]
-        Loop["poll loop"]
-        Settle["settlement:\nchain-head status check"]
-        Policies["policy evaluation:\nauto-open hedges"]
-    end
-
-    subgraph chain["Somnia Shannon testnet"]
-        DreamDEX["DreamDEX binary\nEvent Contracts"]
-    end
-
-    UI --> API --> sdk
-    sdk <--> DreamDEX
-    API --> db
-    Loop --> Settle --> db
-    Loop --> Policies --> db
-    Settle --> Redeem --> DreamDEX
-    Policies --> Exec --> DreamDEX
+```
+Coinbase + Kraken ──► Watchman trigger rule ──► (only then) PayBox requestSwap ──► Base receipt check ──► receipt
+   price feed           fresh, corroborated,       ETH → USDC, exact amount,          USDC really arrived,
+                        at or below trigger         one request, ever                 within the authority
 ```
 
-The authoritative write gate is `getMarketOnchain(marketId).status === Trading`. Indexed market data drives discovery, then the chain is re-checked immediately before every order and before every redemption — because DreamDEX binary pools are recycled across markets, so a pool address alone is never a safe market identity. Watchman always keys by the bytes32 `marketId`.
+| Piece | Where | What it does |
+|---|---|---|
+| `packages/core` | shared | Policy grammar, integer money math, trigger rule, the execution state machine, PayBox and Base adapters, demo adapters |
+| `packages/db` | shared | Prisma schema and the Postgres store (guarded conditional updates) |
+| `apps/web` | Vercel | The six-screen flow and its API |
+| `apps/agent` | Railway | The monitor. Owns the price condition; contacts PayBox only for a crossed trigger |
+| `plugin` | PayBox | The Watchman PayBox plugin (MCP), built from the same core |
 
-## How to run locally
+## Safety model
+
+- **The policy is a grammar, not a model.** One asset, one trigger, one action. Anything else is rejected with the reason. Any word the grammar doesn't understand fails the compile, so "...to USDC and send it to 0x..." can never compile into something that ignores its second half.
+- **Armed means frozen.** Reference price, trigger and maximum sell amount are derived once, at arming, by a guarded `DRAFT → ARMED` transition. No path writes them again.
+- **Every PayBox parameter comes from the policy.** Chain `eip155:8453`, `native` → USDC, `exact-amount-in`, amount = policy share of the current balance, never above the armed ceiling.
+- **Stale data can't sell.** The trigger acts only on a fresh price, after sanity bounds, using the *highest* answering source, and pauses when Coinbase and Kraken disagree by more than 1.5%. The PayBox grant is re-checked at the moment of triggering.
+- **Exactly one request.** Each step is a conditional `UPDATE ... WHERE <previous state>`. Only the caller that wins the submission claim calls PayBox. A submission whose outcome is unknown is held for review and never resubmitted. Tested with 20 concurrent workers against Postgres.
+- **The request ID is never lost.** The SDK call that creates the swap also signs it; Watchman captures the request ID the instant PayBox returns it, so a failure later in that call still leaves Watchman following the same request.
+- **Success means verified.** PayBox `success` moves the protection to `VERIFYING`. It completes only after Watchman reads the receipt on Base: status succeeded, USDC transferred to the wallet, ETH sold within the authority. Otherwise it fails or stops for review, saying whether funds moved.
+- **Honest states.** `pending_approval`, `pending_signature`, `pending_funding`, `pending_settlement` and `pending_confirmation` each surface as what they are. If PayBox needs your passkey or a signature, the screen says so.
+
+## Demo mode
+
+Demo mode is the same product on simulated rails: a deterministic simulated market and a simulated PayBox with PayBox's real request lifecycle (`pending_signature → pending_confirmation → success`). The engine, state machine and screens are identical. A simulated swap never shows a transaction hash; the receipt says *Simulated · no on-chain transaction*.
+
+Live mode needs PayBox configured on the server and a browser unlocked at `/operator`. See [DEPLOY.md](DEPLOY.md).
+
+## Develop
 
 ```bash
 pnpm install
-cp .env.example .env        # fill in DATABASE_URL at minimum
-pnpm db:generate
-pnpm db:migrate              # applies the baseline Prisma migration
-pnpm dev:web                 # http://localhost:3000
+cp .env.example .env            # set DATABASE_URL
+pnpm db:migrate:deploy
+pnpm dev:web                    # http://localhost:3000, demo mode
+pnpm dev:agent                  # live monitor (needs PAYBOX_API_KEY for live)
 ```
-
-Run the settlement/policy agent in a second terminal:
 
 ```bash
-pnpm dev:agent
+pnpm typecheck
+pnpm test                       # 105 core tests; Postgres tests run with TEST_DATABASE_URL
+pnpm build
 ```
 
-Verify everything before you ship:
-
-```bash
-pnpm typecheck    # tsc --noEmit across all workspaces
-pnpm test         # sdk hedge-sizing unit tests
-pnpm build        # prisma generate + tsc build (db, sdk, agent) + next build (web)
-```
-
-Leave `PRIVATE_KEY` unset to develop entirely in simulation — quoting and sizing hit live DreamDEX markets either way, only the final order write is skipped.
-
-## How to deploy
-
-Full click-by-click instructions (Neon database → Vercel → Railway, zero to live in under 10 minutes) live in **[DEPLOY.md](./DEPLOY.md)**.
-
-Short version: `packages/db` and `packages/sdk` ship as raw TypeScript source (no build step), so `apps/web` deploys to Vercel with Root Directory `apps/web` and just runs `pnpm --filter @watchman/web build` (`apps/web/vercel.json` + `next.config.ts`'s `transpilePackages` make Next compile that source in-place — nothing to build first, nothing to get wrong). `apps/agent` deploys to Railway (root-level `railway.json`) as a long-running worker (not a cron job) running `pnpm --filter @watchman/agent start`, which runs the agent directly via `tsx` — no compile step there either. Both services need the same `DATABASE_URL`; `PRIVATE_KEY` is optional on both and controls whether orders are simulated or real. See [.env.example](./.env.example) for the full variable reference.
-
-## Tech stack
-
-- **Frontend:** Next.js 15 (App Router) + React 19 + TypeScript + Tailwind CSS v4
-- **Backend:** Next.js Route Handlers (quoting, execution) + a standalone Node/TypeScript worker (settlement, policies)
-- **Data:** Neon Postgres + Prisma (`User → Exposure → Hedge → Receipt`, plus `Policy`)
-- **Chain integration:** `@somnia-chain/markets-sdk` (DreamDEX market discovery, order book, IOC orders, redemption) + viem
-- **Network:** Somnia Shannon testnet, chain `50312`; collateral tUSDC (`0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E`, 6 decimals)
-- **Hosting:** Vercel (web) + Railway (agent)
-
-## Risk model
-
-For a hedge with exposure `E`, protection fraction `p`, Down price `q`, and `n` contracts:
-
-```text
-protected amount = E × p
-premium          = n × q
-potential payout  = n
-```
-
-`n` is capped by both the premium budget and currently available Down liquidity — Watchman never sizes past what it can actually fill.
-
-After settlement:
-
-```text
-unhedged P&L = exposure × actual move
-hedged P&L   = unhedged P&L + payout − premium
-net protection = hedged P&L − unhedged P&L
-efficiency      = net protection / premium
-```
-
-## Honest limitations
-
-- **Binary contracts are not perfect puts.** A Down Event Contract pays a fixed amount per contract regardless of how far the market moved past the strike/event boundary — it does not scale with the size of the move the way a real put's intrinsic value does. Watchman's receipts show this gap directly (`unhedged P&L` vs `hedged P&L`) rather than hiding it behind a single "you were protected" number.
-- **Coverage is bounded by the contract's own window.** A 15-minute or 1-hour Down contract only protects against moves inside that window. A move that starts one second after expiry is not covered, and Watchman does not auto-roll a hedge into a new window today.
-- **Liquidity-limited sizing.** If the cheapest Down market doesn't have enough resting liquidity to fill the requested protection, Watchman fills what it can and reports the shortfall rather than over-paying across multiple markets.
-- **Demo mode numbers are real, execution is not.** Quotes, sizing, and settlement math in Demo mode all run against live DreamDEX data — only the on-chain order/redemption step is skipped. It is not a canned/mocked walkthrough, but it is also not a funded position.
-- **No mainnet support.** Every constant in `packages/sdk/src/config.ts` is pinned to Somnia Shannon testnet on purpose.
+The plugin has its own toolchain (Node 24, pnpm 11.11): see [plugin/README.md](plugin/README.md).
