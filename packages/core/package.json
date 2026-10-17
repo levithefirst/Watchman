@@ -1,0 +1,15 @@
+{
+  "name": "@watchman/core",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./src/index.ts" },
+    "./live": { "types": "./src/live/index.ts", "default": "./src/live/index.ts" }
+  },
+  "scripts": { "build": "tsc --noEmit", "typecheck": "tsc --noEmit", "test": "vitest run" },
+  "dependencies": { "@paybox-sh/sdk": "2.2.0" },
+  "devDependencies": { "typescript": "^5.9.2", "vitest": "^3.2.4", "@types/node": "^22.0.0" }
+}

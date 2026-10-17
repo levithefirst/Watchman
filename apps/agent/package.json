@@ -2,7 +2,7 @@
   "name": "@watchman/agent",
   "private": true,
   "type": "module",
-  "scripts": { "dev": "tsx src/index.ts", "build": "tsc", "typecheck": "tsc --noEmit", "start": "tsx src/index.ts" },
-  "dependencies": { "@watchman/db": "workspace:*", "@watchman/sdk": "workspace:*", "tsx": "^4.19.0" },
+  "scripts": { "dev": "tsx src/index.ts", "build": "tsc --noEmit", "typecheck": "tsc --noEmit", "start": "tsx src/index.ts" },
+  "dependencies": { "@watchman/core": "workspace:*", "@watchman/db": "workspace:*", "tsx": "^4.19.0" },
   "devDependencies": { "typescript": "^5.9.2", "@types/node": "^22.0.0" }
 }
