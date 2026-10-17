@@ -7,125 +7,124 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Asset {
-  BTC
-  ETH
+enum Mode {
+  DEMO
+  LIVE
 }
 
-enum HedgeStatus {
-  /** Intent recorded. Nothing has been sent on-chain yet. */
-  QUOTED
-  /**
-   * An order HAS been sent on-chain and its outcome is not yet known. Money
-   * may already have moved. A row left in this state is the recovery target:
-   * it carries the wallet, market and requested size needed to reconcile
-   * against the chain. It must never be interpreted as "did not execute".
-   */
+enum ProtectionStatus {
+  /// Compiled, not yet authorized. The only state in which terms may change.
+  DRAFT
+  /// Authorized and frozen. Watchman is monitoring the price.
+  ARMED
+  /// The trigger fired. See `stage` for exactly where the swap is.
   EXECUTING
-  OPEN
-  ACTIVE
-  SETTLING
-  SETTLED
-  REDEEMED
+  /// Verified on-chain (or, in demo mode, against the simulated ledger).
+  COMPLETED
   FAILED
+  REVOKED
 }
 
-enum PolicyStatus {
-  ACTIVE
-  PAUSED
+enum ExecutionStage {
+  SUBMITTING
+  PENDING_APPROVAL
+  PENDING_SIGNATURE
+  PENDING_FUNDING
+  SETTLING
+  VERIFYING
+  /// Watchman could not prove what happened and has stopped acting.
+  NEEDS_REVIEW
 }
 
-model User {
-  id          String     @id @default(cuid())
-  wallet      String     @unique
-  demo        Boolean    @default(false)
-  createdAt   DateTime   @default(now())
-  exposures   Exposure[]
-  hedges      Hedge[]
-  policies    Policy[]
+/// One protective order. Field-for-field the engine's ProtectionRecord
+/// (packages/core/src/model.ts). Every state change is a conditional UPDATE
+/// guarded on the previous state, which is what makes execution idempotent.
+model Protection {
+  id          String           @id @default(cuid())
+  /// Anonymous browser session that created it.
+  ownerId     String
+  mode        Mode
+  status      ProtectionStatus @default(DRAFT)
+  stage       ExecutionStage?
+  instruction String
+  dropBps     Int
+  sellBps     Int
+
+  payboxCredentialId   String?
+  payboxCredentialName String?
+  approvalMode         String?
+  walletAddress        String?
+
+  referencePriceCents Int?
+  triggerPriceCents   Int?
+  /// Wei, as a decimal string.
+  balanceAtArmWei     String?
+  maxSellWei          String?
+  armedAt             DateTime?
+
+  lastPriceCents      Int?
+  lastPriceAt         DateTime?
+  lastPriceSources    String?
+  pauseReason         String?
+  permissionCheckedAt DateTime?
+  demoDropAt          DateTime?
+
+  triggeredAt          DateTime?
+  triggerObservedCents Int?
+  sellWei              String?
+  /// Set by the single caller that won the right to submit. Never cleared.
+  submitStartedAt      DateTime?
+  payboxRequestId      String?   @unique
+  payboxStatus         String?
+  approvalUrl          String?
+  signAttemptedAt      DateTime?
+  txHash               String?
+  soldWei              String?
+  /// USDC atomic units (6 decimals), as a decimal string.
+  usdcReceived         String?
+  executionPriceCents  Int?
+  verifiedAt           DateTime?
+  failureCode          String?
+  failureMessage       String?
+  fundsMoved           String?
+
+  completedAt DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  events AuditEvent[]
+
+  @@index([ownerId, createdAt])
+  @@index([mode, status])
 }
 
-model Exposure {
-  id          String   @id @default(cuid())
-  userId      String
-  asset       Asset
-  amount      Decimal  @db.Decimal(30, 10)
-  entryPrice  Decimal  @db.Decimal(30, 10)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hedges      Hedge[]
-  @@index([userId, asset])
+model AuditEvent {
+  id           String     @id @default(cuid())
+  protectionId String
+  kind         String
+  /// For one-shot kinds this equals `kind`, making the event idempotent;
+  /// repeatable kinds (pause/resume) get a unique suffix.
+  dedupeKey    String
+  message      String
+  priceCents   Int?
+  amount       String?
+  requestId    String?
+  txHash       String?
+  metadata     Json?
+  at           DateTime   @default(now())
+  protection   Protection @relation(fields: [protectionId], references: [id], onDelete: Cascade)
+
+  @@unique([protectionId, dedupeKey])
+  @@index([protectionId, at])
 }
 
-model Hedge {
-  id                 String      @id @default(cuid())
-  userId             String
-  exposureId         String?
-  asset              Asset
-  marketId           String
-  marketSymbol       String
-  windowSeconds      Int
-  protectionPct      Decimal     @db.Decimal(8, 5)
-  exposureUsd        Decimal     @db.Decimal(30, 10)
-  protectedUsd       Decimal     @db.Decimal(30, 10)
-  contractsRequested Decimal     @db.Decimal(30, 10)
-  contractsFilled    Decimal     @db.Decimal(30, 10)
-  premiumUsd         Decimal     @db.Decimal(30, 10)
-  downPrice          Decimal     @db.Decimal(20, 10)
-  txHash             String?
-  redeemTxHash       String?
-  /**
-   * Client-supplied key for one protect attempt. Unique, so a retry whose
-   * response was lost cannot execute a second on-chain order: the insert
-   * loses the race and the existing hedge is returned instead.
-   */
-  idempotencyKey     String?     @unique
-  /** When the order was sent on-chain. Set before execution, never cleared. */
-  executionStartedAt DateTime?
-  expiry             DateTime
-  status             HedgeStatus @default(OPEN)
-  createdAt          DateTime    @default(now())
-  settledAt          DateTime?
-  redeemedAt         DateTime?
-  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  exposure           Exposure?   @relation(fields: [exposureId], references: [id], onDelete: SetNull)
-  receipt            Receipt?
-  @@index([userId, status])
-  @@index([marketId])
-}
-
-model Receipt {
-  id               String   @id @default(cuid())
-  hedgeId          String   @unique
-  exposureUsd      Decimal  @db.Decimal(30, 10)
-  premiumUsd       Decimal  @db.Decimal(30, 10)
-  actualMovePct    Decimal  @db.Decimal(20, 10)
-  unhedgedPnlUsd   Decimal  @db.Decimal(30, 10)
-  hedgedPnlUsd     Decimal  @db.Decimal(30, 10)
-  payoutUsd        Decimal  @db.Decimal(30, 10)
-  // Attribution. grossLossOffsetUsd is capped at the realised loss, so
-  // lossOffsetPct is bounded at 100 by construction. netHedgeContributionUsd
-  // (payout - premium) is deliberately a separate figure: it is what the hedge
-  // added to the position, not how much loss it offset.
-  grossLossOffsetUsd      Decimal @db.Decimal(30, 10)
-  lossOffsetPct           Decimal @db.Decimal(20, 10)
-  netHedgeContributionUsd Decimal @db.Decimal(30, 10)
-  overshootUsd            Decimal @db.Decimal(30, 10)
-  createdAt        DateTime @default(now())
-  hedge            Hedge    @relation(fields: [hedgeId], references: [id], onDelete: Cascade)
-}
-
-model Policy {
-  id            String       @id @default(cuid())
-  userId        String
-  asset         Asset
-  protectionPct Decimal      @db.Decimal(8, 5)
-  windowSeconds Int
-  maxPremiumUsd Decimal      @db.Decimal(30, 10)
-  status        PolicyStatus @default(ACTIVE)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId, status])
+/// Liveness of the Railway monitor, so the UI can say when monitoring is interrupted.
+model MonitorHeartbeat {
+  id          String   @id
+  seenAt      DateTime
+  priceCents  Int?
+  priceAt     DateTime?
+  sources     String?
+  canSign     Boolean  @default(false)
 }

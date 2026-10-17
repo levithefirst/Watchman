@@ -42,6 +42,8 @@ export type SubmitOutcome =
  */
 export interface ExecutionGateway {
   readonly label: string;
+  /** True for the demo simulator. Audit copy then never claims on-chain activity. */
+  readonly simulated?: boolean;
   /** Whether a paired agent signer is available to complete pending_signature in-process. */
   readonly canSign: boolean;
   submitSwap(order: SwapOrder, protection: ProtectionRecord): Promise<SubmitOutcome>;

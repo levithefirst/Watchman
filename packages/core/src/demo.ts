@@ -51,6 +51,7 @@ function snapshotAt(p: ProtectionRecord, now: Date): RequestSnapshot {
 export function createDemoGateway(now: () => Date = () => new Date()): ExecutionGateway {
   return {
     label: "PayBox (simulated)",
+    simulated: true,
     canSign: true,
     async submitSwap(order: SwapOrder, p: ProtectionRecord): Promise<SubmitOutcome> {
       if (order.credentialId !== DEMO_CREDENTIAL.id) return { kind: "rejected", message: "credential is not granted to Watchman" };

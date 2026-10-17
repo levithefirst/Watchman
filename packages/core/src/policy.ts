@@ -100,7 +100,7 @@ export function parseInstruction(input: string): ParseResult {
   const action = ACTION.exec(text);
 
   if (!condition || !action) {
-    if (OTHER_ACTIONS.test(text)) return fail("unsupported_action", `${SUPPORTED_SHAPE} Watchman can only sell ETH for USDC.`);
+    if (OTHER_ACTIONS.test(text)) return fail("unsupported_action", `${SUPPORTED_SHAPE} It can only sell ETH for USDC.`);
     if (RISE.test(text)) return fail("unsupported_direction", `${SUPPORTED_SHAPE} It acts on drops, not rises.`);
     if (OTHER_ASSETS.test(text) && !new RegExp(`\\b${ETH}\\b`, "i").test(text)) {
       return fail("unsupported_asset", `${SUPPORTED_SHAPE} Other assets aren't supported.`);
@@ -134,7 +134,7 @@ export function parseInstruction(input: string): ParseResult {
     .filter((word) => word && !FILLER.has(word));
   if (residue.length > 0) {
     if (OTHER_ACTIONS.test(residue.join(" "))) {
-      return fail("unsupported_action", `${SUPPORTED_SHAPE} Watchman can only sell ETH for USDC, nothing else.`);
+      return fail("unsupported_action", `${SUPPORTED_SHAPE} It can only sell ETH for USDC, nothing else.`);
     }
     return fail("unrecognized", `Watchman didn't understand “${residue.slice(0, 4).join(" ")}”. ${SUPPORTED_SHAPE}`);
   }

@@ -326,6 +326,7 @@ async function applySnapshot(p: ProtectionRecord, s: RequestSnapshot, guard: Par
   const moved = await deps.store.transition(p.id, { status: "EXECUTING", ...guard }, { ...base, stage, failureCode: null, failureMessage: null, fundsMoved: null });
   if (!moved) return deps.store.get(p.id);
 
+  const sim = deps.gateway.simulated === true;
   const event = {
     PENDING_APPROVAL: { kind: "PAYBOX_APPROVAL_REQUIRED", message: "PayBox is asking you to approve this swap with your passkey." },
     PENDING_SIGNATURE: {
@@ -333,11 +334,16 @@ async function applySnapshot(p: ProtectionRecord, s: RequestSnapshot, guard: Par
       message: deps.gateway.canSign ? "PayBox cleared the swap within your grant and opened its signing window." : "PayBox cleared the swap. A signature is required to continue.",
     },
     PENDING_FUNDING: { kind: "PAYBOX_FUNDING_REQUIRED", message: "PayBox reports the wallet can't fund this swap yet." },
-    SETTLING: { kind: "PAYBOX_BROADCAST", message: "PayBox broadcast the swap to Base and is waiting for confirmation." },
-    VERIFYING: { kind: "TRANSACTION_EXECUTED", message: "PayBox reports the swap confirmed on Base." },
+    SETTLING: { kind: "PAYBOX_BROADCAST", message: sim ? "The simulated swap is settling. Nothing is broadcast in demo mode." : "PayBox broadcast the swap to Base and is waiting for confirmation." },
+    VERIFYING: { kind: "TRANSACTION_EXECUTED", message: sim ? "The simulated PayBox reports the swap settled." : "PayBox reports the swap confirmed on Base." },
   } as const;
   if (p.stage === "PENDING_SIGNATURE" && (stage === "SETTLING" || stage === "VERIFYING")) {
-    await deps.store.record(p.id, { kind: "PAYBOX_SIGNED", message: "PayBox signed the swap inside its signing window. Your wallet's private key never left PayBox.", requestId: s.requestId, at: now });
+    await deps.store.record(p.id, {
+      kind: "PAYBOX_SIGNED",
+      message: sim ? "The simulated PayBox signer signed the swap. No key or wallet was involved." : "PayBox signed the swap inside its signing window. Your wallet's private key never left PayBox.",
+      requestId: s.requestId,
+      at: now,
+    });
   }
   const e = event[stage as keyof typeof event];
   if (e) await deps.store.record(p.id, { kind: e.kind, message: e.message, requestId: s.requestId, txHash: base.txHash, at: now });

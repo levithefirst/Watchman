@@ -45,6 +45,7 @@ export interface ProtectionView {
     detail: string;
     steps: Array<{ key: string; label: string; state: StepState; note?: string }>;
     sellEth: string | null;
+    observedPrice: string | null;
     requestId: string | null;
     payboxStatus: string | null;
     approvalUrl: string | null;
@@ -80,7 +81,7 @@ export const EVENT_TITLES: Record<AuditKind, string> = {
   PAYBOX_SIGNATURE_REQUIRED: "Signature requested",
   PAYBOX_SIGNED: "Signed in PayBox",
   PAYBOX_FUNDING_REQUIRED: "Funding required",
-  PAYBOX_BROADCAST: "Broadcast to Base",
+  PAYBOX_BROADCAST: "Swap settling",
   TRANSACTION_EXECUTED: "Transaction executed",
   TRANSACTION_VERIFIED: "Transaction verified",
   EXECUTION_FAILED: "Execution failed",
@@ -191,6 +192,7 @@ function execution(p: ProtectionRecord, ctx: ViewContext): ProtectionView["execu
     detail,
     steps,
     sellEth: p.sellWei ? formatEth(p.sellWei) : null,
+    observedPrice: p.triggerObservedCents != null ? formatUsd(p.triggerObservedCents) : null,
     requestId: p.payboxRequestId,
     payboxStatus: p.payboxStatus,
     approvalUrl: p.approvalUrl,

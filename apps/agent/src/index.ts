@@ -1,137 +1,78 @@
-import { db } from "@watchman/db";
-import { asBinary, calculateEffectiveness, cheapestDownQuote, createWatchmanContext, discoverTradingMarkets, placeDownIOC, quoteHedge, redeem, COLLATERAL_DECIMALS, MARKET_STATUS } from "@watchman/sdk";
-
-const intervalMs = Number(process.env.SETTLEMENT_POLL_MS ?? 10_000);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-interface ResolutionPrice { numericValue: string; decimals: number; voided: boolean }
-interface MarketState { expiry: bigint; decimals: number; outcomeToken: `0x${string}`; yesId: bigint; noId: bigint; winningOutcome: number; isResolved: boolean; isVoided: boolean }
-const toNumber = (value: unknown): number => { const parsed = Number(value); if (!Number.isFinite(parsed)) throw new Error("Expected a finite numeric oracle value"); return parsed; };
-const resolutionMovePct = (resolution: ResolutionPrice, entryPrice: number): number => { if (resolution.voided || entryPrice <= 0) return 0; const closePrice = toNumber(resolution.numericValue) / 10 ** resolution.decimals; return closePrice > 0 ? ((closePrice - entryPrice) / entryPrice) * 100 : 0; };
-const payoutFor = (amount: bigint, decimals: number, onchain: MarketState, settlementFeeBps: bigint): number => { const units = Number(amount) / 10 ** decimals; if (onchain.isVoided) return units / 2; if (!onchain.isResolved) return 0; return units * Math.max(0, 1 - Number(settlementFeeBps) / 10_000); };
-
-async function settleOne(hedge: Awaited<ReturnType<typeof db.hedge.findMany<{ include: { exposure: true } }>>>[number]): Promise<void> {
-  const ctx = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
-  try {
-    const onchain = await ctx.exchange.client.getMarketOnchain(hedge.marketId as `0x${string}`);
-    const state: MarketState = { expiry: onchain.expiry, decimals: onchain.decimals, outcomeToken: onchain.outcomeToken, yesId: onchain.yesId, noId: onchain.noId, winningOutcome: onchain.winningOutcome, isResolved: onchain.isResolved, isVoided: onchain.isVoided };
-    if (!state.isResolved && !state.isVoided) return;
-    const resolution = await ctx.exchange.client.getOnchainResolutionPrice(hedge.marketId);
-    const entryPrice = Number(hedge.exposure?.entryPrice ?? 0);
-    const actualMovePct = resolution ? resolutionMovePct(resolution, entryPrice) : 0;
-    const settlementFees = await ctx.exchange.client.getMarketFees(hedge.marketId);
-    const feeBps = BigInt(settlementFees?.settlementFeeBps ?? 0);
-    let payoutUsd = 0;
-    let redeemTxHash: string | undefined;
-    if (process.env.PRIVATE_KEY && ctx.walletAddress) {
-      const heldYes = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: state.outcomeToken, account: ctx.walletAddress, id: state.yesId });
-      const heldNo = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: state.outcomeToken, account: ctx.walletAddress, id: state.noId });
-      const claimable: Array<{ outcome: 0 | 1; amount: bigint }> = [];
-      if (state.isVoided) { if (heldYes > 0n) claimable.push({ outcome: 0, amount: heldYes }); if (heldNo > 0n) claimable.push({ outcome: 1, amount: heldNo }); }
-      else if (state.winningOutcome === 1 && heldNo > 0n) claimable.push({ outcome: 1, amount: heldNo });
-      else if (state.winningOutcome === 0 && heldYes > 0n) claimable.push({ outcome: 0, amount: heldYes });
-      for (const position of claimable) { payoutUsd += payoutFor(position.amount, state.decimals || COLLATERAL_DECIMALS, state, feeBps); const hash = await redeem(ctx, hedge.marketId as `0x${string}`, position.outcome, position.amount); if (hash) redeemTxHash = hash; }
-    } else payoutUsd = state.isVoided ? Number(hedge.contractsFilled) / 2 : state.winningOutcome === 1 ? Number(hedge.contractsFilled) * Math.max(0, 1 - Number(feeBps) / 10_000) : 0;
-    const effectiveness = calculateEffectiveness({ exposureUsd: Number(hedge.exposureUsd), premiumUsd: Number(hedge.premiumUsd), actualMovePct, payoutUsd });
-    await db.$transaction([
-      db.receipt.upsert({ where: { hedgeId: hedge.id }, update: {}, create: { hedgeId: hedge.id, exposureUsd: effectiveness.exposureUsd, premiumUsd: effectiveness.premiumUsd, actualMovePct: effectiveness.actualMovePct, unhedgedPnlUsd: effectiveness.unhedgedPnlUsd, hedgedPnlUsd: effectiveness.hedgedPnlUsd, payoutUsd: effectiveness.hedgePayoutUsd, grossLossOffsetUsd: effectiveness.grossLossOffsetUsd, lossOffsetPct: effectiveness.lossOffsetPct, netHedgeContributionUsd: effectiveness.netHedgeContributionUsd, overshootUsd: effectiveness.overshootUsd } }),
-      db.hedge.update({ where: { id: hedge.id }, data: { status: "REDEEMED", settledAt: new Date(), redeemedAt: redeemTxHash ? new Date() : null, redeemTxHash: redeemTxHash ?? null } }),
-    ]);
-    console.log(JSON.stringify({ event: "hedge_settled", hedgeId: hedge.id, marketId: hedge.marketId, payoutUsd, actualMovePct, lossOffsetPct: effectiveness.lossOffsetPct, netHedgeContributionUsd: effectiveness.netHedgeContributionUsd, redeemTxHash: redeemTxHash ?? null }));
-  } finally { await ctx.exchange.close().catch(() => undefined); }
-}
+import { advanceProtection, PublicPriceFeed, type EngineDeps, type PriceObservation } from "@watchman/core";
+import { BaseRpc, createBaseVerifier, createBaseWallet, createPayboxAuthority, createPayboxGateway, payboxConfigured, payboxEnv } from "@watchman/core/live";
+import { db, PrismaStore } from "@watchman/db";
 
 /**
- * Deterministic recovery for orders whose result was never saved.
- *
- * A hedge in EXECUTING means /api/protect sent an order on-chain and then
- * failed before it could record the outcome. Real funds may have moved. The
- * row still carries the wallet, market and requested size, so the truth is
- * recoverable from the chain: if the signer holds a NO position in that
- * market the order filled and the hedge becomes OPEN; if it holds none and
- * the market has moved on, it never filled and the hedge becomes FAILED.
- *
- * Rows are only resolved on evidence. Anything ambiguous is left EXECUTING
- * and logged, because silently guessing here is how funds get lost.
+ * Watchman's monitor. It owns the price condition — PayBox never sees a
+ * price — and contacts PayBox only for the protection that has crossed its
+ * trigger, or to follow a request it already made. Demo protections are
+ * driven by the web app through the same engine and are ignored here.
  */
-async function reconcileExecutingHedges(): Promise<void> {
-  const stranded = await db.hedge.findMany({ where: { status: "EXECUTING" }, orderBy: { createdAt: "asc" }, take: 20 });
-  if (stranded.length === 0) return;
-  const ctx = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
-  try {
-    for (const hedge of stranded) {
-      try {
-        const onchain = await ctx.exchange.client.getMarketOnchain(hedge.marketId as `0x${string}`);
-        if (!ctx.walletAddress) {
-          console.error(JSON.stringify({ event: "hedge_reconcile_blocked", hedgeId: hedge.id, reason: "no signer configured" }));
-          continue;
-        }
-        const heldNo = await ctx.exchange.client.getOutcomeBalance({ outcomeToken: onchain.outcomeToken, account: ctx.walletAddress, id: onchain.noId });
-        const contracts = Number(heldNo) / 10 ** (onchain.decimals || COLLATERAL_DECIMALS);
-        if (contracts > 0) {
-          // The order filled. Price is not recoverable from a balance, so the
-          // quoted price stands and the premium follows the real fill size.
-          const price = Number(hedge.downPrice);
-          await db.hedge.update({ where: { id: hedge.id }, data: { status: "OPEN", contractsFilled: contracts, premiumUsd: contracts * price } });
-          console.log(JSON.stringify({ event: "hedge_reconciled", hedgeId: hedge.id, outcome: "filled", contracts, txHash: hedge.txHash }));
-        } else if (onchain.isResolved || onchain.isVoided || onchain.status !== MARKET_STATUS.Trading) {
-          // No position and the market can no longer fill one: it never filled.
-          await db.hedge.update({ where: { id: hedge.id }, data: { status: "FAILED" } });
-          console.log(JSON.stringify({ event: "hedge_reconciled", hedgeId: hedge.id, outcome: "not_filled", txHash: hedge.txHash }));
-        } else {
-          console.error(JSON.stringify({ event: "hedge_reconcile_pending", hedgeId: hedge.id, marketId: hedge.marketId, txHash: hedge.txHash }));
-        }
-      } catch (error) {
-        console.error(JSON.stringify({ event: "hedge_reconcile_error", hedgeId: hedge.id, error: error instanceof Error ? error.message : "unknown error" }));
-      }
-    }
-  } finally { await ctx.exchange.close().catch(() => undefined); }
+const pollMs = Math.max(2_000, Number(process.env.WATCHMAN_POLL_MS ?? 5_000));
+const log = (event: string, data: Record<string, unknown> = {}) => console.log(JSON.stringify({ at: new Date().toISOString(), event, ...data }));
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const env = payboxEnv();
+const live = payboxConfigured(env);
+const rpc = new BaseRpc();
+const feed = new PublicPriceFeed();
+const store = new PrismaStore(db);
+
+let observation: PriceObservation | null = null;
+
+const deps: EngineDeps = {
+  store,
+  prices: { latest: async () => observation },
+  authority: createPayboxAuthority(env),
+  gateway: createPayboxGateway(env),
+  verifier: createBaseVerifier(rpc),
+  wallet: createBaseWallet(rpc),
+  log,
+};
+
+let stopping = false;
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    // Finish the tick in flight: a PayBox submission is never abandoned halfway.
+    log("stopping", { signal });
+    stopping = true;
+  });
 }
 
-async function settleOpenHedges(): Promise<void> {
-  const candidates = await db.hedge.findMany({ where: { status: { in: ["OPEN", "SETTLING"] } }, include: { exposure: true }, orderBy: { expiry: "asc" }, take: 50 });
-  for (const hedge of candidates) {
-    const lock = await db.hedge.updateMany({ where: { id: hedge.id, status: { in: ["OPEN", "SETTLING"] } }, data: { status: "SETTLING" } });
-    if (lock.count !== 1) continue;
-    try { await settleOne(hedge); } catch (error) { await db.hedge.update({ where: { id: hedge.id }, data: { status: "OPEN" } }).catch(() => undefined); console.error(JSON.stringify({ event: "hedge_settlement_retry", hedgeId: hedge.id, error: error instanceof Error ? error.message : "unknown error" })); }
+async function tick(): Promise<void> {
+  observation = await feed.latest().catch(() => null);
+  await db.monitorHeartbeat.upsert({
+    where: { id: "live" },
+    create: { id: "live", seenAt: new Date(), priceCents: observation?.priceCents ?? null, priceAt: observation?.observedAt ?? null, sources: observation?.quotes.map((q) => q.source).join(" + ") ?? null, canSign: deps.gateway.canSign },
+    update: { seenAt: new Date(), priceCents: observation?.priceCents ?? null, priceAt: observation?.observedAt ?? null, sources: observation?.quotes.map((q) => q.source).join(" + ") ?? null, canSign: deps.gateway.canSign },
+  });
+  if (!live) return;
+
+  const active = await db.protection.findMany({ where: { mode: "LIVE", status: { in: ["ARMED", "EXECUTING"] } }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  for (const { id } of active) {
+    try {
+      const after = await advanceProtection(id, deps);
+      if (after && (after.status !== "ARMED" || after.pauseReason)) log("protection", { id, status: after.status, stage: after.stage, pauseReason: after.pauseReason });
+    } catch (error) {
+      log("advance_failed", { id, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 }
 
-async function executePolicies(): Promise<void> {
-  const policies = await db.policy.findMany({ where: { status: "ACTIVE" }, include: { user: true }, take: 50 });
-  if (policies.length === 0) return;
-  const ctx = createWatchmanContext(Boolean(process.env.PRIVATE_KEY));
-  try {
-    for (const policy of policies) {
-      const exposure = await db.exposure.findFirst({ where: { userId: policy.userId, asset: policy.asset }, orderBy: { createdAt: "desc" } });
-      if (!exposure) continue;
-      const existing = await db.hedge.findFirst({ where: { userId: policy.userId, asset: policy.asset, status: { in: ["OPEN", "SETTLING"] } } });
-      if (existing) continue;
-      const quote = await cheapestDownQuote(ctx, policy.asset, policy.windowSeconds as 900 | 3600);
-      if (!quote) continue;
-      const sized = quoteHedge({ exposureUsd: Number(exposure.amount), protectionPct: Number(policy.protectionPct), maxPremiumUsd: Number(policy.maxPremiumUsd), windowSeconds: policy.windowSeconds as 900 | 3600 }, { downPrice: quote.downAsk, contractsAvailable: quote.contractsAvailable });
-      if (sized.contractsToBuy <= 0) continue;
-      const market = (await discoverTradingMarkets(ctx, policy.asset)).find((candidate) => asBinary(candidate.market).marketId.toLowerCase() === quote.marketId.toLowerCase());
-      if (!market) continue;
-      const fresh = await ctx.exchange.client.getMarketOnchain(quote.marketId);
-      if (fresh.status !== 1) continue;
-      const isDemo = policy.user.demo;
-      let filled = sized.contractsToBuy;
-      let price = quote.downAsk;
-      let txHash: string | undefined;
-      if (!isDemo && process.env.PRIVATE_KEY) {
-        if (!ctx.walletAddress || policy.user.wallet.toLowerCase() !== ctx.walletAddress.toLowerCase()) continue;
-        const placed = await placeDownIOC(ctx, market, quote.downAsk, sized.contractsToBuy);
-        filled = placed.filled; price = placed.price; txHash = placed.hash;
-        if (filled <= 0) continue;
-      }
-      await db.hedge.create({ data: { userId: policy.userId, exposureId: exposure.id, asset: policy.asset, marketId: quote.marketId, marketSymbol: quote.symbol, windowSeconds: policy.windowSeconds, protectionPct: policy.protectionPct, exposureUsd: exposure.amount, protectedUsd: sized.protectedAmountUsd, contractsRequested: sized.contractsNeeded, contractsFilled: filled, premiumUsd: filled * price, downPrice: price, txHash, expiry: new Date(quote.expiry * 1000), status: "OPEN" } });
-      console.log(JSON.stringify({ event: "policy_hedge_created", policyId: policy.id, asset: policy.asset, marketId: quote.marketId, simulated: isDemo || !process.env.PRIVATE_KEY }));
+async function main(): Promise<void> {
+  log("started", { pollMs, paybox: live ? "configured" : "not configured", signer: deps.gateway.canSign ? "paired" : "none" });
+  if (!live) log("paybox_missing", { detail: "PAYBOX_API_KEY is not set. Reporting heartbeat and price only; no live protection can execute." });
+  while (!stopping) {
+    const started = Date.now();
+    try {
+      await tick();
+    } catch (error) {
+      log("tick_failed", { error: error instanceof Error ? error.message : String(error) });
     }
-  } finally { await ctx.exchange.close().catch(() => undefined); }
+    await sleep(Math.max(250, pollMs - (Date.now() - started)));
+  }
+  await db.$disconnect();
+  log("stopped");
 }
 
-// Reconcile first: a stranded EXECUTING hedge represents funds that may
-// already have moved, so it is resolved before any new work is started.
-async function tick(): Promise<void> { await reconcileExecutingHedges(); await settleOpenHedges(); await executePolicies(); }
-async function main(): Promise<void> { console.log("Watchman settlement/policy agent started on Somnia Shannon testnet (50312)"); while (true) { try { await tick(); } catch (error) { console.error(error); } await sleep(intervalMs); } }
-void main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });
+void main();
