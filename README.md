@@ -272,4 +272,4 @@ Watchman was built as a hackathon project and runs on testnet.
 
 ## License
 
-No license is specified. Without a license file, default copyright applies and no reuse rights are granted.
+MIT. See [LICENSE](LICENSE).
